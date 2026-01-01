@@ -1,0 +1,723 @@
+---
+title: "Airline Dlight Delays in 2023 across months (2% sample data)"
+format: html
+---
+
+# EDA of flight delay data
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(knitr)
+library(ggplot2)
+install.packages("gplots", repos='http://cran.us.r-project.org')
+library(gplots)
+install.packages("kableExtra", repos='http://cran.us.r-project.org')
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Load the 2% Sample data from a CSV file into a data frame
+df <- read.csv("/Users/shreya/Documents/Flight_Delay_Analysis/Flight_Delay_Analysis/Codes/delaysample.csv")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(kableExtra)
+library(magrittr)
+library(data.table)
+library(tidyverse)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Convert Column Names from snake_case to camelCase
+# Helper function to convert snake_case to camelCase
+toCamelCase <- function(string) {
+  # Split the string by underscores and convert to lowercase
+  words <- tolower(unlist(strsplit(string, "_")))
+  # Capitalize the first letter of each word except the first word
+  words[-1] <- sapply(words[-1], function(word) {
+    paste(toupper(substr(word, 1, 1)), substr(word, 2, nchar(word)), sep = "")
+  })
+  # Concatenate the words back together
+  return(paste0(words, collapse = ""))
+}
+
+# Apply the function to all column names in the dataframe
+if (exists("df") && is.data.frame(df)) {  # Check if 'df' exists and is a dataframe
+  colnames(df) <- sapply(colnames(df), toCamelCase)
+} else {
+  cat("Dataframe 'df' does not exist or is not a dataframe.")
+}
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Time Period Information
+# Reformat date using lubridate
+library(lubridate)
+df$flDate <- as.Date(mdy_hms(df$flDate))
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# convert to factor variable: "year", "quarter", "month", "dayOfMonth", "dayOfWeek"
+df <- df %>%
+  mutate(
+    year = factor(year),
+    quarter = factor(quarter),
+    month = factor(month),
+    dayOfMonth = factor(dayOfMonth),
+    dayOfWeek = factor(dayOfWeek)
+  )
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Ensure month is a factor and set levels starting with January
+df$month <- factor(df$month, 
+                   levels = 1:12, 
+                   labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))
+
+# Relabel the dayOfWeek factor levels to abbreviated day names
+df$dayOfWeek <- factor(df$dayOfWeek, 
+                       levels = 1:7, 
+                       labels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Add a new column 'weekend' that checks the day of the week
+df <- df %>%
+  mutate(weekend = factor(if_else(dayOfWeek %in% c("Sat", "Sun"), "Weekend", "Weekday"),
+                          levels = c("Weekday", "Weekend")))
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Seasonality:  Track departure and arrival time as AM or PM
+df <- df %>%
+  mutate(
+    depTimeAMPM = factor(if_else(depTime < 1200, "AM", "PM"), levels = c("AM", "PM")),
+    arrTimeAMPM = factor(if_else(arrTime < 1200, "AM", "PM"), levels = c("AM", "PM"))
+  )
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### TABLES EXPLAINING DATA COLUMNS
+# Time Period Information
+timeperiod <- data.frame(
+  `Column Name` = c("year", "quarter", "month", "dayOfMonth", "dayOfWeek", "weekend", "flDate"),
+  Description = c("Year", "Quarter (1-4)", "Month (Jan, Feb,..Dec)", "Day of Month (1,2,..31)", "Day of Week (Mon, Tue.. Sun)","Weekend / Weekday", "Flight Date (yyyy-mm-dd)")
+)
+kable(timeperiod, 
+      format = "pandoc", 
+      caption = "Table 1: Time Period Information")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Flight Performance Metrics 
+flightPerformanceMetrics <- data.frame(
+  `Column Name` = c("crsDepTime", 
+                    "depTime", 
+                    "depTimeAMPM",  # Added AM/PM categorization for departure time
+                    "depDelay", 
+                    "depDelayNew", 
+                    "depDel15", 
+                    "taxiOut", 
+                    "wheelsOff", 
+                    "wheelsOn", 
+                    "taxiIn", 
+                    "crsArrTime", 
+                    "arrTime", 
+                    "arrTimeAMPM",  # Added AM/PM categorization for arrival time
+                    "arrDelay", 
+                    "arrDelayNew", 
+                    "arrDel15", 
+                    "cancelled", 
+                    "cancellationCode", 
+                    "diverted", 
+                    "crsElapsedTime",
+                    "actualElapsedTime", 
+                    "airTime", 
+                    "distance"),
+  Description = c("Scheduled Departure Time", 
+                  "Actual Departure Time",
+                  "AM/PM Categorization of Departure Time",  # Description for depTimeAMPM
+                  "Departure Delay in minutes, where (depDelay = depTime - crsDepTime)", 
+                  "Departure Delay in minutes (zero for early departure)", 
+                  "Departure Delay > 15 minutes (1=Yes, 0=No)", 
+                  "Taxi Out Time in minutes, where (taxiOut = wheelsOff - depTime)", 
+                  "Wheels Off Time", 
+                  "Wheels On Time", 
+                  "Taxi In Time, where (taxiIn = arrTime - wheelsOn)", 
+                  "Scheduled Arrival Time", 
+                  "Actual Arrival Time", 
+                  "AM/PM Categorization of Arrival Time",  # Description for arrTimeAMPM
+                  "Arrival Delay in minutes, where (arrDelay = arrTime - crsArrTime)", 
+                  "Arrival Delay in minutes (zero for early arrival)", 
+                  "Arrival Delay > 15 minutes (1=Yes)", 
+                  "Cancelled Flight Indicator (1=Yes)", 
+                  "Specifies The Reason For Cancellation", 
+                  "Diverted Flight Indicator (1=Yes, 0=No)", 
+                  "Scheduled Elapsed Time of Flight in minutes, where (crsElapsedTime = crsArrTime - crsDepTime)", 
+                  "Actual Elapsed Time of Flight in minutes, where (actualElapsedTime = arrTime - DepTime)", 
+                  "Flight Time in minutes, where (airTime = wheelsOn - wheelsOff)", 
+                  "Distance between airports in miles")
+)
+
+# Use kable to format the updated table
+kable(flightPerformanceMetrics, 
+      format = "pandoc", 
+      caption = "Table 2: Flight Performance Metrics including AM/PM Categorization")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Major US HOLIDAYS
+# Define the holidays with their names and dates
+holidays <- data.frame(
+  NameOfHoliday = c("New Year's Day", "Martin Luther King Jr. Day", "Presidents' Day", "Memorial Day",
+                    "Independence Day", "Labor Day", "Columbus Day", "Veterans Day", 
+                    "Thanksgiving Day", "Christmas Day", "New Year's Eve"),
+  DateOfHoliday = c("2023-01-01", "2023-01-16", "2023-02-20", "2023-05-29",
+                    "2023-07-04", "2023-09-04", "2023-10-09", "2023-11-11",
+                    "2023-11-23", "2023-12-25", "2023-12-31")
+)
+
+# Convert the DateOfHoliday to Date class
+holidays$DateOfHoliday <- as.Date(holidays$DateOfHoliday)
+
+# Add the day of the week for each holiday
+holidays$DayOfWeek <- weekdays(holidays$DateOfHoliday)
+
+# Display the table using kable
+kable(holidays, 
+      format = "pandoc", 
+      caption = "Table 3: Major US Holidays in 2023")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+##### Generate a list of major US holidays and the Long Weekends corresponding to them 
+
+# Define the holidays and their dates
+holidays <- data.frame(
+  nameOfHoliday = c("New Year's Day", "Martin Luther King Jr. Day", "Presidents' Day", "Memorial Day",
+                    "Independence Day", "Labor Day", "Columbus Day", "Veterans Day",
+                    "Thanksgiving Day", "Christmas Day", "New Year's Eve"),
+  dateOfHoliday = as.Date(c("2023-01-01", "2023-01-16", "2023-02-20", "2023-05-29",
+                            "2023-07-04", "2023-09-04", "2023-10-09", "2023-11-11",
+                            "2023-11-23", "2023-12-25", "2023-12-31"))
+)
+
+# Function to add specific adjacent days based on the day of the week
+addAdjacentDays <- function(date) {
+  result <- c(date)
+  if (weekdays(date) == "Saturday") {result <- c(result, date - 1, date + 1)}
+  if (weekdays(date) == "Sunday") {result <- c(result, date - 1, date + 1)}
+  if (weekdays(date) == "Monday") {result <- c(result, date - 1, date - 2)}  # Extending if Monday
+  if (weekdays(date) == "Tuesday") {result <- c(result, date - 1, date - 2, date - 3)} # Extending if Tuesday
+  if (weekdays(date) == "Friday") {result <- c(result, date + 1, date + 2)}  # Extending if Friday
+  if (weekdays(date) == "Thursday") {result <- c(result, date + 1, date + 2, date + 3)}# Extending if Thursday
+  return(result)
+}
+
+# Generate a list of dates for each holiday including the specific additional days
+holidays$extendedDates <- lapply(holidays$dateOfHoliday, addAdjacentDays)
+
+# Create an expanded dataframe that includes all extended dates tagged with their holiday
+expandedDates <- do.call(rbind, lapply(seq_along(holidays$extendedDates), function(i) {
+  data.frame(Date = as.Date(holidays$extendedDates[[i]]),
+             nameOfHoliday = holidays$nameOfHoliday[i])
+}))
+
+# Remove duplicates and sort
+expandedDates <- expandedDates %>%
+  distinct() %>%
+  arrange(Date)
+
+# Calculate the differences to find consecutive dates
+expandedDates <- expandedDates %>%
+  mutate(NextDateDiff = lead(Date) - Date)
+
+# Find long weekends based on consecutive dates
+expandedDates$isPartOfLongWeekend <- expandedDates$NextDateDiff == 1 | lag(expandedDates$NextDateDiff) == 1
+
+# Filter to get only the long weekend dates
+longWeekendDates <- expandedDates %>%
+  filter(isPartOfLongWeekend)
+
+# Generate a summary table with holiday names and add weekdays
+longWeekendDates <- longWeekendDates %>%
+  mutate(DayOfWeek = weekdays(Date)) %>%
+  select(Date, DayOfWeek, nameOfHoliday)
+
+# Filter out dates not in 2023
+longWeekendDates2023 <- longWeekendDates %>%
+  filter(year(Date) == 2023)
+
+# Generate a summary table with holiday names and add weekdays
+longWeekendDates2023 <- longWeekendDates2023 %>%
+  mutate(DayOfWeek = weekdays(Date)) %>%
+  select(Date, DayOfWeek, nameOfHoliday)
+
+# Display the long weekends only for 2023
+kable(longWeekendDates2023, 
+      format = "pandoc", 
+      caption = "Table 4: Long Weekends in the United States for 2023 with Corresponding Holidays")
+
+```
+
+```{r}
+head(df$flDate, n = 2)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+##### Add a data column isLongWeekend to track if a flight date falls on a long weekend
+
+# Ensure 'flDate' is of Date type
+df$flDate <- as.Date(df$flDate)
+
+# Check if each flight date is in the list of long weekend dates
+df$isLongWeekend <- df$flDate %in% longWeekendDates2023$Date
+# Now 'df' has an additional column 'isLongWeekend' that is TRUE if the flight occurs on a long weekend
+```
+
+## Impact of Seasonality on Flight Delays
+
+### Quarterly Seasonality
+
+Flight delays often vary significantly across the quarters of the year. The winter months are typically prone to weather-related delays, such as snow and ice, which can disrupt flight schedules. In contrast, the summer months may witness higher volumes of air travel, leading to increased congestion and associated delays. This variation highlights the importance of seasonal planning in airline operations.
+
+### Monthly Variations
+
+Analyzing flight delays on a monthly basis allows for the identification of specific periods with heightened delay frequencies. This analysis can reveal the impact of holiday peaks, the onset of different weather conditions, and other seasonal activities that affect air travel. Such granularity is crucial for precise operational adjustments and marketing strategies.
+
+### Day of Week
+
+The day of the week has a pronounced impact on flight delays, with weekdays generally seeing different patterns compared to weekends. Typically, Mondays and Fridays bear the brunt of business travel, potentially leading to higher congestion and increased delays. Understanding these patterns helps airlines and airports better manage resources and scheduling.
+
+### Weekend vs. Weekday
+
+The distinction between weekends and weekdays further refines the understanding of travel patterns. Weekends often see a surge in leisure travel, which might differ in nature and management compared to the predominantly business-related travel on weekdays. This differentiation is vital for tailoring services and operational focus.
+
+### Time of Day
+
+The time of day is crucial in determining the likelihood of flight delays. Morning flights tend to be more punctual, benefitting from the overnight reset of schedules, whereas evening flights are more susceptible to the accumulative effects of the day's delays. This insight is useful for scheduling and passenger advisories.
+
+### Long Weekends
+
+Long weekends represent unique challenges and opportunities for the airline industry. These periods often see a spike in travel volume as travelers take advantage of the extended break, which can strain operational capacities and increase the likelihood of delays. Recognizing these trends is essential for strategic planning and customer service enhancements. This structured approach provides a comprehensive view of how various time-related factors influence flight delays, offering valuable insights for academic research and practical applications in aviation management.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Create variable for airline name
+Airline <- rep("Other",
+               nrow(df))
+
+# Update 'Airline' based on 'mktUniqueCarrier' values to "American", "Southwest", or "Delta"
+Airline <- ifelse(df$mktUniqueCarrier == "AA", "American", Airline)
+Airline <- ifelse(df$mktUniqueCarrier == "WN", "Southwest", Airline)
+Airline <- ifelse(df$mktUniqueCarrier == "DL", "Delta", Airline)
+
+# Calculate 'nonAirTime' (difference between actual elapsed time and air time)
+# nonAirTime + airTime = actualElapsedTime
+nonAirTime <- df$actualElapsedTime - df$airTime
+
+df <- cbind(df, Airline, nonAirTime)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Create factor variables
+df$Airline <- as.factor(df$Airline)
+df$depDel15 <- as.factor(df$depDel15)
+df$arrDel15 <- as.factor(df$arrDel15)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+nrow(df)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#arrDel15 (Only retrieve rows that has value 0 or 1. May contain NA or "")
+ArrDelayValid <- df[!is.na(df$arrDel15) & df$arrDel15!="",]
+LateFlights <- ArrDelayValid[df$arrDel15 == 1,]
+nrow(LateFlights)
+summary(LateFlights$carrierDelay)
+#most values are NA. 31428 total values in LateFlights dataframe, 24280 rows are NA for each of the 5 causes of delay.
+#Hence, I worked with arrDelay variable.
+```
+
+```{r  echo=FALSE, warning=FALSE, message=FALSE}
+df %>%
+  select(arrDelay, carrierDelay, weatherDelay, nasDelay, securityDelay, lateAircraftDelay) %>%
+  filter(arrDelay > 0) %>% #This is the only statistic where I am using arrDelay variable, and not arrDelay15. As for many rows, reason of delay is not present. Hence don't want to further reduce #rows for calculating this statistic.
+  filter(!is.na(carrierDelay)) %>% #This step is needed as there are some rows where arrDelay is present but cause is not present.
+  summarize('tot_Dl_ct' = sum(arrDelay, na.rm = TRUE),
+            'tot_carrierDl_ct' = sum(carrierDelay, na.rm = TRUE),
+            'tot_weatherDl_ct' = sum(weatherDelay, na.rm = TRUE),
+            'tot_nasDl_ct' = sum(nasDelay, na.rm = TRUE),
+            'tot_secDl_ct' = sum(securityDelay, na.rm = TRUE),
+            'tot_late_aircraftDl_ct' = sum(lateAircraftDelay, na.rm = TRUE)) %>%
+  pivot_longer(cols = c(tot_Dl_ct, tot_carrierDl_ct, tot_weatherDl_ct, tot_nasDl_ct, tot_secDl_ct, tot_late_aircraftDl_ct), names_to = "DelayType", values_to = "DelayCounts") %>%
+  mutate(delay_category = ifelse(DelayType == "tot_Dl_ct", "Total Delay Count",
+                                 ifelse(DelayType == "tot_carrierDl_ct", "Carrier Delay",
+                                        ifelse(DelayType == "tot_weatherDl_ct", "Weather Delay",
+                                               ifelse(DelayType == "tot_nasDl_ct", "NAS Delay",
+                                                      ifelse(DelayType == "tot_secDl_ct", "Security Delay", "Late Aircraft Delay")))))) %>%
+  ggplot(aes(x = reorder(delay_category, DelayCounts), y = DelayCounts)) +
+  geom_bar(stat = "identity") + coord_flip() +
+  ggtitle("Delay Cause Impact on the Airline for >=1 minute delay") + 
+  ylab("Total Delay Counts") + xlab("Delay Category")
+#Sanity checks were done. 
+# select(arrDelay, carrierDelay, weatherDelay, nasDelay, securityDelay, securityDelay, lateAircraftDelay) %>%
+#  filter(arrDelay > 0) %>%
+#  head(n=50). I manually checked that total arrDelay for each row equalled sum of delays caused by each reason.
+# Moreover, dataframe generated on 2% dataset by the steps before pivot_longer 
+# clearly showed sum(742402, 111609, 373721, 5299, 823340), sum of individual reasons of delay equals total arrDelay
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+df %>%
+  select(arrDelay, carrierDelay, weatherDelay, nasDelay, securityDelay, lateAircraftDelay) %>%
+  filter(arrDelay > 0) %>% #This is the only statistic where I am using arrDelay variable, and not arrDelay15. As for many rows, reason of delay is not present. Hence don;t want to further reduce #rows for calculating this statistic.
+  filter(!is.na(carrierDelay)) %>% #This step is needed as there are some rows where arrDelay is present but cause is not present.
+  summarize(#calculate percentages
+            'tot_Dl_pctg' = round((sum(arrDelay, na.rm = TRUE) / sum(arrDelay, na.rm = TRUE))*100, 2) ,
+            'tot_carrierDl_pctg' = round((sum(carrierDelay, na.rm = TRUE) / sum(arrDelay, na.rm = TRUE))*100, 2),
+            'tot_weatherDl_pctg' = round((sum(weatherDelay, na.rm = TRUE) / sum(arrDelay, na.rm = TRUE))*100, 2),
+            'tot_nasDl_pctg' = round((sum(nasDelay, na.rm = TRUE) / sum(arrDelay, na.rm = TRUE))*100, 2),
+            'tot_secDl_pctg' = round((sum(securityDelay, na.rm = TRUE) / sum(arrDelay, na.rm = TRUE))*100, 2),
+            'tot_late_aircraftDl_pctg' = round((sum(lateAircraftDelay, na.rm = TRUE) / sum(arrDelay, na.rm = TRUE))*100, 2)) %>%
+  pivot_longer(cols = c("tot_Dl_pctg", "tot_carrierDl_pctg", "tot_weatherDl_pctg", "tot_nasDl_pctg", "tot_secDl_pctg", "tot_late_aircraftDl_pctg"), names_to = "DelayType", values_to = "DelayPctgs") %>%
+  mutate(delay_category = ifelse(DelayType == "tot_Dl_pctg", "Total Delay %age",
+                                 ifelse(DelayType == "tot_carrierDl_pctg", "Carrier Delay %age",
+                                        ifelse(DelayType == "tot_weatherDl_pctg", "Weather Delay %age",
+                                               ifelse(DelayType == "tot_nasDl_pctg", "NAS Delay %age",
+                                                      ifelse(DelayType == "tot_secDl_pctg", "Security Delay %age", "Late Aircraft Delay %age")))))) %>%
+  ggplot(aes(x = reorder(delay_category, DelayPctgs), y = DelayPctgs)) +
+  geom_bar(stat = "identity") + coord_flip() + 
+  ggtitle("Delay Cause Impact on the Airline for >=1 minute delay") + 
+  ylab("Total Delay Percentage") + xlab("Delay Category")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Flights delayed grouped by month
+totalFlights <- nrow(df)
+lateFlights <- sum(df$arrDelay > 0, na.rm = TRUE)
+lateFlights15 <- sum(df$arrDel15 == 1, na.rm = TRUE)
+
+print(paste("Total flights:", totalFlights))
+print(paste("late flights by >=1 minute:", lateFlights))
+print(paste("late flights by >= 15 minutes:", lateFlights15))
+
+
+arrDelayByMonth <- df %>%
+  group_by(month) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+print(arrDelayByMonth)
+
+ggplot(arrDelayByMonth, aes(x = reorder(month, -percentageLate15), y = percentageLate15, fill = month)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "month", y = "Percentage Late") +
+  theme_minimal()
+
+arrDelayByMonthV2 <- df %>%
+  group_by(Airline, month) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+ggplot(arrDelayByMonthV2, aes(x = reorder(month, -percentageLate15), y = percentageLate15, fill = month)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "month", y = "Percentage Late") +
+  theme_minimal() + 
+  facet_wrap(~Airline, nrow = 4)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Flights delayed grouped by day of week
+totalFlights <- nrow(df)
+lateFlights <- sum(df$arrDelay > 0, na.rm = TRUE)
+lateFlights15 <- sum(df$arrDel15 == 1, na.rm = TRUE)
+
+print(paste("Total flights:", totalFlights))
+print(paste("late flights by >=1 minute:", lateFlights))
+print(paste("late flights by >= 15 minutes:", lateFlights15))
+
+
+arrDelayByDayOfWeek <- df %>%
+  group_by(dayOfWeek) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+print(arrDelayByDayOfWeek)
+
+ggplot(arrDelayByDayOfWeek, aes(x = reorder(dayOfWeek, -percentageLate15), y = percentageLate15, fill = dayOfWeek)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "month", y = "Percentage Late") +
+  theme_minimal()
+
+arrDelayByDayOfWeekV2 <- df %>%
+  group_by(Airline, dayOfWeek) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+ggplot(arrDelayByDayOfWeekV2, aes(x = reorder(dayOfWeek, -percentageLate15), y = percentageLate15, fill = dayOfWeek)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "month", y = "Percentage Late") +
+  theme_minimal() + 
+  facet_wrap(~Airline, nrow = 4)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Flights delayed grouped by weekend vs weekday
+totalFlights <- nrow(df)
+lateFlights <- sum(df$arrDelay > 0, na.rm = TRUE)
+lateFlights15 <- sum(df$arrDel15 == 1, na.rm = TRUE)
+
+print(paste("Total flights:", totalFlights))
+print(paste("late flights by >=1 minute:", lateFlights))
+print(paste("late flights by >= 15 minutes:", lateFlights15))
+
+
+arrDelayByWeekend <- df %>%
+  group_by(weekend) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+arrDelayByWeekendV2 <- arrDelayByWeekend %>%
+  mutate(avgFlightPerDay = ifelse(weekend == "Weekend", round(totalFlights/2,0), round(totalFlights/5,0))) %>%
+  relocate(avgFlightPerDay, .after = totalFlights)
+
+print(arrDelayByWeekendV2)
+
+ggplot(arrDelayByWeekend, aes(x = reorder(weekend, -percentageLate15), y = percentageLate15, fill = weekend)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "weekend", y = "Percentage Late") +
+  theme_minimal()
+
+arrDelayByWeekendV3 <- df %>%
+  group_by(Airline, weekend) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+ggplot(arrDelayByWeekendV3, aes(x = reorder(weekend, -percentageLate15), y = percentageLate15, fill = weekend)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "weekend Vs weekday", y = "Percentage Late") +
+  theme_minimal() +
+  facet_wrap(~Airline, nrow = 4)
+```
+
+```{r  echo=FALSE, warning=FALSE, message=FALSE}
+#Flights delayed grouped by AM vs PM
+totalFlights <- nrow(df)
+lateFlights <- sum(df$arrDelay > 0, na.rm = TRUE)
+lateFlights15 <- sum(df$arrDel15 == 1, na.rm = TRUE)
+
+print(paste("Total flights:", totalFlights))
+print(paste("late flights by >=1 minute:", lateFlights))
+print(paste("late flights by >= 15 minutes:", lateFlights15))
+
+Missing <- is.na(df$arrDel15)
+print(paste("Arrival delay has #",sum(Missing), " rows missing", sep = ""))
+#arrival delay was missing for 2206 rows. Hence, rows with NA value ofr arrival delay were eliminated.
+df_arrDelay_Present <- subset(df,
+                      subset = !Missing)
+
+arrDelayByAMPM <- df_arrDelay_Present %>%
+  group_by(arrTimeAMPM) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    # percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+print(arrDelayByAMPM)
+
+ggplot(arrDelayByAMPM, aes(x = reorder(arrTimeAMPM, -percentageLate15), y = percentageLate15, fill = arrTimeAMPM)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "Arrival time, AM or PM", y = "Percentage Late") +
+  theme_minimal()
+
+arrDelayByAMPMV2 <- df_arrDelay_Present %>%
+  group_by(Airline, arrTimeAMPM) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    # percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+print(arrDelayByAMPMV2)
+
+ggplot(arrDelayByAMPMV2, aes(x = reorder(arrTimeAMPM, -percentageLate15), y = percentageLate15, fill = arrTimeAMPM)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "Arrival time, AM or PM", y = "Percentage Late") +
+  theme_minimal() +
+  facet_wrap(~Airline, nrow = 4)
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Flights delayed grouped by long weekends
+totalFlights <- nrow(df)
+lateFlights <- sum(df$arrDelay > 0, na.rm = TRUE)
+lateFlights15 <- sum(df$arrDel15 == 1, na.rm = TRUE)
+
+print(paste("Total flights:", totalFlights))
+print(paste("late flights by >=1 minute:", lateFlights))
+print(paste("late flights by >= 15 minutes:", lateFlights15))
+
+Missing <- is.na(df$arrDel15)
+print(paste("Arrival delay has #",sum(Missing), " rows missing", sep = ""))
+#arrival delay was missing for 2206 rows. Hence, rows with NA value ofr arrival delay were eliminated.
+df_arrDelay_Present <- subset(df,
+                      subset = !Missing)
+
+arrDelayByLongWeekend <- df_arrDelay_Present %>%
+  group_by(isLongWeekend) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+arrDelayByLongWeekendV2 <- arrDelayByLongWeekend %>%
+  mutate(avgFlightPerDay = ifelse(isLongWeekend == TRUE, round(totalFlights/(nrow(longWeekendDates2023)),0), round(totalFlights/365 - (nrow(longWeekendDates2023)),0))) %>%
+  relocate(avgFlightPerDay, .after = totalFlights)
+
+print(arrDelayByLongWeekendV2)
+
+ggplot(arrDelayByLongWeekend, aes(x = reorder(isLongWeekend, -percentageLate15), y = percentageLate15, fill = isLongWeekend)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "Airline", y = "Percentage Late") +
+  theme_minimal()
+
+arrDelayByLongWeekend <- df_arrDelay_Present %>%
+  group_by(Airline, isLongWeekend) %>%
+  summarise(
+    totalFlights = n(),
+    lateFlights = sum(arrDelay > 0, na.rm = TRUE),
+    lateFlights15 = sum(arrDel15 == 1, na.rm = TRUE),
+    percentageLate = round((sum(arrDelay > 0, na.rm = TRUE) / totalFlights) * 100, 2),
+    percentageLate15 = round((sum(arrDel15 == 1, na.rm = TRUE) / totalFlights) * 100, 2)
+  )
+
+print(arrDelayByLongWeekend)
+
+ggplot(arrDelayByLongWeekend, aes(x = reorder(Airline, -percentageLate15), y = percentageLate15, fill = isLongWeekend)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(percentageLate15, "%")), vjust = -0.5) +
+  labs(title = "Percentage of Flights Late by >=15 Minute by Airline", x = "Airline", y = "Percentage Late") +
+  theme_minimal()
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+Missing <- is.na(df$arrDel15)
+print(paste("Arrival delay has #",sum(Missing), " rows missing", sep = ""))
+#arrival delay was missing for 2206 rows. Hence, rows with NA value ofr arrival delay were eliminated.
+df_arrDelay_Present <- subset(df,
+                      subset = !Missing)
+
+flightsArrStatus <- df_arrDelay_Present %>%
+  mutate(
+    arrStatus = factor(if_else(arrDel15 == 1, "LateFlight15", "onTimeFlight15"), levels = c("LateFlight15", "onTimeFlight15"))
+  )
+
+flightsArrStatus %>%
+  group_by(arrStatus) %>%
+  summarize(mean_dist = mean(distance, na.rm = TRUE),
+            median_dist = median(distance, na.rm = TRUE),
+            min_dist = min(distance, na.rm = TRUE),
+            max_dist = max(distance, na.rm = TRUE),
+            FirstQu = quantile(distance, probs = 0.25, na.rm = TRUE),
+            SecondQu = quantile(distance, probs = 0.5, na.rm = TRUE))
+
+quantiles <- quantile(flightsArrStatus$distance, probs = c(0, .25, .5, .75, 1))
+flightsArrStatus %>%
+  filter(arrStatus %in% c("LateFlight15", "onTimeFlight15")) %>%
+  mutate(dist_quantile = cut(distance, breaks = quantiles)) %>%
+  count(dist_quantile)
+
+ggplot(data = flightsArrStatus, aes(x = arrStatus, y = distance, fill = arrStatus)) +
+  geom_boxplot() +
+  xlab("Flight arrival status") +
+  ylab("Flight distance")
+
+plotmeans(distance~arrStatus, data = flightsArrStatus, mean.labels = T)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+Missing <- is.na(df$arrDel15)
+print(paste("Arrival delay has #",sum(Missing), " rows missing", sep = ""))
+#arrival delay was missing for 2206 rows. Hence, rows with NA value ofr arrival delay were eliminated.
+df_arrDelay_Present <- subset(df,
+                      subset = !Missing)
+
+flightsArrStatus <- df_arrDelay_Present %>%
+  mutate(
+    arrStatus = factor(if_else(arrDel15 == 1, "LateFlight15", "onTimeFlight15"), levels = c("LateFlight15", "onTimeFlight15"))
+  )
+
+flightsArrStatus %>%
+  group_by(arrStatus) %>%
+  summarize(mean_dist = mean(airTime, na.rm = TRUE),
+            median_dist = median(airTime, na.rm = TRUE),
+            min_dist = min(airTime, na.rm = TRUE),
+            max_dist = max(airTime, na.rm = TRUE),
+            FirstQu = quantile(airTime, probs = 0.25, na.rm = TRUE),
+            SecondQu = quantile(airTime, probs = 0.5, na.rm = TRUE))
+
+quantiles <- quantile(flightsArrStatus$airTime, probs = c(0, .25, .5, .75, 1))
+flightsArrStatus %>%
+  filter(arrStatus %in% c("LateFlight15", "onTimeFlight15")) %>%
+  mutate(time_quantile = cut(airTime, breaks = quantiles)) %>%
+  count(time_quantile)
+
+ggplot(data = flightsArrStatus, aes(x = arrStatus, y = airTime, fill = arrStatus)) +
+  geom_boxplot() +
+  xlab("Flight arrival status") +
+  ylab("Flight AirTime")
+
+plotmeans(airTime~arrStatus, data = flightsArrStatus, mean.labels = T)
+```
