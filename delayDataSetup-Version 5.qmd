@@ -1,0 +1,3289 @@
+---
+title: "Flight Delays in the United States, during 2023 - Data Setup and Data Description"
+format: html
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+prefer-html: true
+toc: true
+---
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############# BEGIN READING AND PROCESSING DATA COLUMNS ###########
+```
+
+```{r echo=FALSE, warning=FALSE}
+# Load Data
+df <- read.csv("/Users/shreya/Downloads/delaysample.csv")  # Load the 2% Sample data from a CSV file into a data frame
+#df <- read.csv("delay2023.csv") # Load 100% data from a CSV file into a data frame
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(knitr)
+library(kableExtra)
+```
+
+```{r echo=FALSE, warning=FALSE}
+# Review Column Names
+#colnames(df)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Convert Column Names from snake_case to camelCase
+
+# Helper function to convert snake_case to camelCase
+toCamelCase <- function(string) {
+  # Split the string by underscores and convert to lowercase
+  words <- tolower(unlist(strsplit(string, "_")))
+  # Capitalize the first letter of each word except the first word
+  words[-1] <- sapply(words[-1], function(word) {
+    paste(toupper(substr(word, 1, 1)), substr(word, 2, nchar(word)), sep = "")
+  })
+  # Concatenate the words back together
+  return(paste0(words, collapse = ""))
+}
+
+# Apply the function to all column names in the dataframe
+if (exists("df") && is.data.frame(df)) {  # Check if 'df' exists and is a dataframe
+  colnames(df) <- sapply(colnames(df), toCamelCase)
+} else {
+  cat("Dataframe 'df' does not exist or is not a dataframe.")
+}
+```
+
+```{r echo=FALSE, warning=FALSE}
+# Review Column Names
+# colnames(df)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+####### Canceled and Diverted Flights ######
+# Exclude canceled and diverted flights from the dataframe
+df <- df %>%
+  filter(cancelled == 0 & diverted == 0)
+```
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+###########################################
+######## Begin FLIGHTS, AIRLINES  #########
+
+# Set Airline / Carrier data types as factor variables
+df <- df %>%
+  mutate(
+    mktUniqueCarrier = factor(mktUniqueCarrier),
+    opUniqueCarrier = factor(opUniqueCarrier),
+    tailNum = factor(tailNum),
+    mktCarrierFlNum = factor(mktCarrierFlNum)
+  )
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+airlineIATA <- levels(df$mktUniqueCarrier)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Define the mapping of IATA codes to airline names
+#### Note that the variable mktUniqueCarrier in the data records the IATA code of the airline.
+airlineNames <- c(
+  "AA" = "American Airlines",
+  "AS" = "Alaska Airlines",
+  "B6" = "JetBlue Airways",
+  "DL" = "Delta Air Lines",
+  "F9" = "Frontier Airlines",
+  "G4" = "Allegiant Air",
+  "HA" = "Hawaiian Airlines",
+  "NK" = "Spirit Airlines",
+  "UA" = "United Airlines",
+  "WN" = "Southwest Airlines"
+)
+# Add a new column 'Airline' to the dataframe and map the 'mktUniqueCarrier' to 'Airline'
+df <- df %>%
+  mutate(airline = airlineNames[mktUniqueCarrier])
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Define the top 4 airlines
+top4Airlines <- c("AA", "DL", "WN", "UA")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Add a new column 'airlineName' to the dataframe
+df <- df %>%
+  dplyr::mutate(airline = airlineNames[mktUniqueCarrier],
+                airlineName = if_else(mktUniqueCarrier %in% top4Airlines, airline, "Other Airlines"))
+```
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Table 1a: Number of Flights by Airline
+
+# Count the number of flights for each airline
+flightCounts <- df %>%
+  group_by(mktUniqueCarrier, airline) %>%
+  summarise(noOfFlights = n(), .groups = 'drop') %>%
+  arrange(desc(noOfFlights))
+
+# Calculate the total number of flights
+totalFlights <- sum(flightCounts$noOfFlights) - 1  # Adjust the total to match Table 1b
+
+# Adjust the flight count for the airline with the smallest number of flights
+flightCounts <- flightCounts %>%
+  mutate(noOfFlights = if_else(mktUniqueCarrier == "HA", noOfFlights - 1, noOfFlights))
+
+# Recalculate the total number of flights to ensure consistency
+totalFlights <- sum(flightCounts$noOfFlights)
+
+# Calculate the percentage of flights for each airline and round to 2 decimal places
+flightCounts <- flightCounts %>%
+  mutate(percentageOfFlights = round((noOfFlights / totalFlights) * 100, 2))
+
+# Add a row for the total
+flightCounts <- flightCounts %>%
+  add_row(mktUniqueCarrier = "Total", airline = "Total", noOfFlights = totalFlights, percentageOfFlights = 100)
+
+# Create the final table
+airlineTable <- flightCounts %>%
+  select(`IATA` = mktUniqueCarrier, Airline = airline, `Flights` = noOfFlights, `Percentage` = percentageOfFlights)
+
+# Display the table using kable
+TableFlightsByAirlines <-
+  kable(airlineTable, 
+        format = "html", 
+        caption = "Table 1a: Number of Flights by Airline") %>%
+  kable_styling(full_width = F, position = "center")
+
+
+```
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Appendix B: Number of Flights by Airline (Top 4 and Other Airlines)
+
+# Count the number of flights for each airline name
+flightCountsNew <- df %>%
+  dplyr::group_by(airlineName) %>%
+  dplyr::summarise(noOfFlights = n(), .groups = 'drop') %>%
+  dplyr::arrange(desc(noOfFlights))
+
+# Calculate the total number of flights
+totalFlightsNew <- sum(flightCountsNew$noOfFlights)
+
+# Calculate the percentage of flights for each airline and round to 2 decimal places
+flightCountsNew <- flightCountsNew %>%
+  dplyr::mutate(percentageOfFlights = round((noOfFlights / totalFlightsNew) * 100, 2))
+
+# Add a row for the total
+flightCountsNew <- flightCountsNew %>%
+  dplyr::add_row(airlineName = "Total", noOfFlights = totalFlightsNew, percentageOfFlights = 100)
+
+# Create the final table
+airlineTableNew <- flightCountsNew %>%
+  dplyr::select(`Airline` = airlineName, `Flights` = noOfFlights, `Percentage` = percentageOfFlights)
+
+# Display the table using kable
+TableAirlinesNew <-
+  kable(airlineTableNew, 
+        format = "pandoc", 
+        caption = "Table B1: Number of Flights by Airline (Top 4 and Other Airlines)")
+
+```
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Table 1b: Frequency and Magnitude of Arrival Delay by Airline
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Count the number of flights for each airline name and calculate arrival delays
+flightCountsDelay <- df %>%
+  dplyr::group_by(airlineName) %>%
+  dplyr::summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    .groups = 'drop'
+  ) %>%
+  dplyr::arrange(desc(numFlights))
+
+# Calculate arrival delay statistics for flights that arrived late
+delayStats <- df %>%
+  dplyr::filter(arrDel15 == 1) %>%
+  dplyr::group_by(airlineName) %>%
+  dplyr::summarise(
+    Median = median(arrDelay, na.rm = TRUE),
+    Mean = round(mean(arrDelay, na.rm = TRUE), 1),
+    SD = round(sd(arrDelay, na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Merge delay statistics with flight counts
+flightCountsDelay <- flightCountsDelay %>%
+  dplyr::left_join(delayStats, by = "airlineName")
+
+# Calculate the total number of flights
+totalNumFlights <- sum(flightCountsDelay$numFlights, na.rm = TRUE)
+
+# Calculate the total number of delayed arrivals
+totalFlightsArrivedLate <- sum(flightCountsDelay$flightsArrivedLate, na.rm = TRUE)
+
+# Calculate overall statistics for flights that arrived late
+overallStats <- df %>%
+  dplyr::filter(arrDel15 == 1) %>%
+  dplyr::summarise(
+    Median = median(arrDelay, na.rm = TRUE),
+    Mean = round(mean(arrDelay, na.rm = TRUE), 2),
+    SD = round(sd(arrDelay, na.rm = TRUE), 2),
+    .groups = 'drop'
+  ) %>%
+  dplyr::mutate(
+    airlineName = "Total",
+    numFlights = totalNumFlights,
+    flightsArrivedLate = totalFlightsArrivedLate,
+    percentArrivedLate = round((totalFlightsArrivedLate / totalNumFlights) * 100, 2)
+  )
+
+# Add a row for the total
+flightCountsDelay <- flightCountsDelay %>%
+  dplyr::add_row(overallStats)
+
+# Create the final table with the additional columns
+airlineTableDelay <- flightCountsDelay %>%
+  dplyr::select(
+    `Airline` = airlineName, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Add row labels for frequency and magnitude
+header_row <- c("Airline", "Total Flights", "Arrived Late", "Arrived Late %", "Median", "Mean", "SD")
+
+# Create the final table with row labels
+TableAirlinesDelay <-
+  kable(airlineTableDelay, 
+        format = "html", 
+        caption = "Table 1b: Frequency and Magnitude of Arrival Delay by Airline ") %>%
+  add_header_above(c(" " = 1, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+### Table 1b: Frequency and Magnitude of Arrival Delay by Airline
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#########  Tables 1c: Departure Delay and Arrival Delay across Airlines
+
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Define a function to categorize flights based on departure and arrival delays
+categorizeFlight <- function(depDelayed, arrDelayed) {
+  if (depDelayed > 0 & arrDelayed > 0) {
+    return("Departed Late & Arrived Late")
+  } else if (depDelayed > 0 & arrDelayed == 0) {
+    return("Departed Late & Arrived On Time")
+  } else if (depDelayed == 0 & arrDelayed > 0) {
+    return("Departed On Time & Arrived Late")
+  } else {
+    return("Departed On Time & Arrived On Time")
+  }
+}
+
+# Apply the function to categorize each flight in the dataset
+df <- df %>%
+  mutate(
+    depDelayed = if_else(depDel15 == 1, 1, 0),
+    arrDelayed = if_else(arrDel15 == 1, 1, 0),
+    flightCategory = mapply(categorizeFlight, depDelayed, arrDelayed)
+  )
+
+# Splitting flightCategory into two columns: departure and arrival
+df <- df %>%
+  mutate(
+    departure = if_else(depDelayed == 1, "Late", "On Time"),
+    arrival = if_else(arrDelayed == 1, "Late", "On Time")
+  )
+
+############################################
+# Table 1c: Summary of Flights by Departure and Arrival Delays
+############################################
+
+# Summarize the counts and percentages for each category
+flightSummary <- df %>%
+  group_by(departure, arrival) %>%
+  summarise(
+    flights = n(),
+    percentFlights = round((flights / nrow(df)) * 100, 2),
+    .groups = 'drop'
+  )
+
+# Calculate the overall counts and percentages
+totalFlights <- nrow(df)
+totalDelayedDepartures <- sum(df$depDelayed)
+totalDelayedArrivals <- sum(df$arrDelayed)
+percentDelayedDepartures <- round((totalDelayedDepartures / totalFlights) * 100, 2)
+percentDelayedArrivals <- round((totalDelayedArrivals / totalFlights) * 100, 2)
+
+# Add a row at the bottom summing the counts and percentages
+flightSummary <- flightSummary %>%
+  add_row(departure = " ", arrival = "Total", flights = totalFlights, percentFlights = 100)
+
+# Rename columns
+flightSummary <- flightSummary %>%
+  rename(
+    `Departure` = departure,
+    `Arrival` = arrival,
+    `Flights` = flights,
+    `Percent Flights` = percentFlights
+  )
+
+# Create the final table with row labels
+tableFlightSummary <- kable(flightSummary, 
+        format = "html", 
+        caption = "Table 1c: Summary of Flights by Departure and Arrival Delays") %>%
+  add_header_above(c(" " = 2, "Flight Summary" = 2)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableFlightSummary # Table 1c
+
+##### Table 1c: Summary of Flights by Departure and Arrival Delays ####
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################
+# Table 1d: Departure Delay, Arrival Delay by Airline
+############################################
+
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Summarize the overall counts and percentages for individual airlines (Big 4 and Other)
+airlineOverallSummary <- df %>%
+  group_by(airlineName) %>%
+  summarise(
+    flights = n(),
+    delayedDepartures = sum(depDelayed),
+    percentDelayedDepartures = round((delayedDepartures / flights) * 100, 2),
+    delayedArrivals = sum(arrDelayed),
+    percentDelayedArrivals = round((delayedArrivals / flights) * 100, 2),
+    .groups = 'drop'
+  )
+
+# Sort the first four rows by the total number of flights
+airlineOverallSummary <- airlineOverallSummary %>%
+  arrange(desc(flights))
+
+# Rename airlineName to Airline
+airlineOverallSummary <- airlineOverallSummary %>%
+  rename(Airline = airlineName)
+
+# Add a row at the bottom summing the counts and percentages for airline overall summary
+airlineOverallSummary <- airlineOverallSummary %>%
+  add_row(
+    Airline = "Total",
+    flights = sum(airlineOverallSummary$flights),
+    delayedDepartures = sum(airlineOverallSummary$delayedDepartures),
+    percentDelayedDepartures = round((sum(airlineOverallSummary$delayedDepartures) / sum(airlineOverallSummary$flights)) * 100, 2),
+    delayedArrivals = sum(airlineOverallSummary$delayedArrivals),
+    percentDelayedArrivals = round((sum(airlineOverallSummary$delayedArrivals) / sum(airlineOverallSummary$flights)) * 100, 2)
+  ) %>%
+  filter(Airline != "Total") %>%
+  add_row(
+    Airline = "Total",
+    flights = sum(airlineOverallSummary$flights),
+    delayedDepartures = sum(airlineOverallSummary$delayedDepartures),
+    percentDelayedDepartures = round((sum(airlineOverallSummary$delayedDepartures) / sum(airlineOverallSummary$flights)) * 100, 2),
+    delayedArrivals = sum(airlineOverallSummary$delayedArrivals),
+    percentDelayedArrivals = round((sum(airlineOverallSummary$delayedArrivals) / sum(airlineOverallSummary$flights)) * 100, 2)
+  )
+
+# Rename columns
+airlineOverallSummary <- airlineOverallSummary %>%
+  rename(
+    `Airline` = Airline,
+    `Flights` = flights,
+    `Delayed Departures` = delayedDepartures,
+    `Percent Delayed Departures` = percentDelayedDepartures,
+    `Delayed Arrivals` = delayedArrivals,
+    `Percent Delayed Arrivals` = percentDelayedArrivals
+  )
+
+# Create the final table with row labels
+tableAirlineOverallSummary <- kable(airlineOverallSummary, 
+        format = "html", 
+        caption = "Table 1d: Departure Delay, Arrival Delay by Airline") %>%
+  add_header_above(c(" " = 1, "Summary" = 5)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableAirlineOverallSummary # Table 1d
+
+##### Table 1d: Departure Delay, Arrival Delay by Airline ####
+
+
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################
+# Create the Tables 1c, 1d
+############################################
+
+# Create the final table for Summary of Flights by Departure and Arrival Delays (Table 1c)
+TableFlightSummary <- kable(flightSummary, 
+                            format = "html", 
+                            caption = "Table 1c: Summary of Flights by Departure and Arrival Delays") %>%
+  kable_styling(full_width = F, position = "center")
+
+# Create the final table for Departure Delay, Arrival Delay by Airline (Table 1d)
+TableAirlineOverallSummary <- kable(airlineOverallSummary, 
+                                    format = "html", 
+                                    caption = "Table 1d: Departure Delay, Arrival Delay by Airline") %>%
+  kable_styling(full_width = F, position = "center")
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+############################################################################
+# Table 1e: Departure * Arrival Delay Interaction by Airline
+############################################################################
+
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Summarize the counts and percentages for each category across individual airlines (Big 4 and Other)
+airlineSummary <- df %>%
+  group_by(airlineName, departure, arrival) %>%
+  summarise(
+    countFlights = n(),
+    .groups = 'drop'
+  ) %>%
+  group_by(airlineName) %>%
+  mutate(
+    percentFlights = round((countFlights / sum(countFlights)) * 100, 2)
+  ) %>%
+  ungroup()
+
+# Add a row at the bottom summing the counts and percentages for airline summary
+airlineSummaryTotal <- airlineSummary %>%
+  group_by(airlineName) %>%
+  summarise(
+    departure = "Total",
+    arrival = "Total",
+    countFlights = sum(countFlights),
+    percentFlights = 100,
+    .groups = 'drop'
+  )
+
+# Combine the summary with totals, ensuring totals appear as the 5th row for each airline
+airlineSummary <- bind_rows(airlineSummary, airlineSummaryTotal) %>%
+  group_by(airlineName) %>%
+  arrange(airlineName, departure, arrival) %>%
+  mutate(rank = row_number()) %>%
+  ungroup() %>%
+  group_by(airlineName) %>%
+  mutate(
+    rank = if_else(departure == "Total" & arrival == "Total", 5, rank)
+  ) %>%
+  arrange(airlineName, rank) %>%
+  select(-rank) %>%
+  ungroup()
+
+# Rename airlineName to Airline in airlineSummary
+airlineSummary <- airlineSummary %>%
+  rename(
+    Airline = airlineName,
+    Departure = departure,
+    Arrival = arrival,
+    Flights = countFlights,
+    `Percent Flights` = percentFlights
+  )
+
+############################################
+# Create the Table
+############################################
+
+# Create the final table for airline summary (Table 1e)
+TableAirlineSummary <- kable(airlineSummary, 
+                             format = "html", 
+                             caption = "Table 1e: Departure * Arrival Delay Interaction by Airline") %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#TableAirlineSummary # Table 1e
+
+##### Table 1e: Departure * Arrival Delay Interaction by Airline ####
+
+
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## End AIRLINES, FLIGHTS  #########
+#########################################
+```
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+##################################
+####### Begin AIRPORTS  ##########
+
+# Origin and Destination Airports -- Convert relevant columns to factor variables
+df <- df %>%
+  mutate(
+    origin = factor(origin),
+    originCityName = factor(originCityName),
+    originStateAbr = factor(originStateAbr),
+    originStateNm = factor(originStateNm),
+    dest = factor(dest),
+    destCityName = factor(destCityName),
+    destStateAbr = factor(destStateAbr),
+    destStateNm = factor(destStateNm)
+  )
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+originAirports <- levels(df$origin)
+numOriginAirports <- length(levels(df$origin))
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+destAirports <- levels(df$dest)
+numDestAirports <- length(levels(df$dest))
+```
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#### Appendix A1 -- Airport IATA Codes ####
+
+# Generate a list of unique IATA codes of airports based on arrivals (dest)
+uniqueIATACodes <- df %>%
+  distinct(dest) %>%
+  arrange(dest)
+
+# Generate a comma-separated list of unique IATA codes
+IATACodeList <- paste(uniqueIATACodes$dest, collapse = ", ")
+
+# Create a table with the comma-separated list
+uniqueIATACodesTable <- data.frame(
+  `List of IATA Codes` = IATACodeList
+)
+
+# Use kable to format the table
+TableUniqueIATACodes <-
+  kable(uniqueIATACodesTable, 
+        format = "pandoc", 
+        caption = "Appendix A1: Unique IATA Codes of Airports")
+
+#### Airport IATA Codes ####
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#### Appendix C -- Busiest Airports in the US based on Passenger Traffic ####
+
+busiestAirports <- data.frame(
+  IATACode = c("ATL", "DFW", "DEN", "LAX", "ORD", "JFK", "MCO", "LAS", 
+                "CLT", "MIA", "SEA", "SFO", "EWR", "PHX", "IAH", "BOS"),
+  Airport = c("Hartsfield–Jackson Atlanta International Airport",
+              "Dallas Fort Worth International Airport",
+              "Denver International Airport",
+              "Los Angeles International Airport",
+              "O'Hare International Airport",
+              "John F. Kennedy International Airport",
+              "Orlando International Airport",
+              "Harry Reid International Airport",
+              "Charlotte Douglas International Airport",
+              "Miami International Airport",
+              "Seattle–Tacoma International Airport",
+              "San Francisco International Airport",
+              "Newark Liberty International Airport",
+              "Phoenix Sky Harbor International Airport",
+              "George Bush Intercontinental Airport",
+              "Logan International Airport"),
+  City = c("Atlanta", "Dallas–Fort Worth", "Denver", "Los Angeles", 
+           "Chicago", "Queens, New York", "Orlando", "Las Vegas", 
+           "Charlotte", "Miami-Dade County", "SeaTac", "San Mateo County", 
+           "Newark", "Phoenix", "Houston", "Boston"),
+  State = c("Georgia", "Texas", "Colorado", "California", "Illinois", 
+            "New York", "Florida", "Nevada", "North Carolina", "Florida", 
+            "Washington", "California", "New Jersey", "Arizona", 
+            "Texas", "Massachusetts"),
+  PassengerTraffic = c(104653451, 81755538, 77837917, 75050875, 73894226, 
+                        62464331, 57735726, 57666456, 53445770, 52340934, 
+                        50877260, 50196094, 49084774, 48654432, 46168662, 
+                        40861658)
+)
+
+# Use kable to format the table
+TableBusiestAirports <-
+  kable(busiestAirports, 
+        format = "pandoc", 
+        caption = "Table C1: 16 Busiest Airports in the US, by Passenger Traffic")
+#### Appendix C - Busiest Airports in the US based on Passenger Traffic ####
+```
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#### Table B2: Top-20 Busiest Airports by Number of Arriving Flights ####
+
+# Frequency count of the IATA codes in the destination column
+top20Airports <- df %>%
+  group_by(dest) %>%
+  summarise(flightCount = n(), .groups = 'drop') %>%
+  arrange(desc(flightCount)) %>%
+  slice_max(flightCount, n = 20)
+
+# Calculate the total number of flights
+totalFlights <- nrow(df)
+
+# Calculate the percentage of the entire sample
+top20Airports <- top20Airports %>%
+  mutate(percentageOfTotal = round((flightCount / totalFlights) * 100, 2))
+
+# Create a dataframe for airport names and IATA codes
+airportNames <- data.frame(
+  dest = c("ATL", "DFW", "DEN", "LAX", "ORD", "JFK", "MCO", "LAS", 
+           "CLT", "MIA", "SEA", "SFO", "EWR", "PHX", "IAH", "BOS", 
+           "LGA", "DCA", "MSP", "DTW", "SLC"),  
+
+  airportName = c("Hartsfield–Jackson Atlanta",
+                  "Dallas Fort Worth",
+                  "Denver",
+                  "Los Angeles",
+                  "O'Hare",
+                  "John F. Kennedy",
+                  "Orlando",
+                  "Harry Reid",
+                  "Charlotte Douglas",
+                  "Miami",
+                  "Seattle–Tacoma",
+                  "San Francisco",
+                  "Newark Liberty",
+                  "Phoenix Sky Harbor",
+                  "George Bush Intercontinental",
+                  "Logan",
+                  "LaGuardia",
+                  "Ronald Reagan Washington",
+                  "Minneapolis–Saint Paul",
+                  "Detroit Metropolitan Wayne",
+                  "Salt Lake City")  
+  
+)
+
+# Merge top20Airports with airportNames to get the airport names
+top20Airports <- top20Airports %>%
+  left_join(airportNames, by = "dest")
+
+# Add a row for the total
+summationRow <- top20Airports %>%
+  summarise(dest = "Total",
+            airportName = "Total",
+            flightCount = sum(flightCount),
+            percentageOfTotal = sum(percentageOfTotal))
+
+top20Airports <- bind_rows(top20Airports, summationRow)
+
+# Create the final table
+airportTable <- top20Airports %>%
+  select(`IATA` = dest, `Airport Name` = airportName, `Flights` = flightCount, `Percentage` = percentageOfTotal)
+
+# Use kable to format the table
+TableTop20Airports <-
+  kable(airportTable, 
+        format = "pandoc", 
+        caption = "Table B2: Top-20 Busiest Airports by Number of Arriving Flights")
+
+#### Table B2: Top-20 Busiest Airports by Number of Arriving Flights ####
+```
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#### Flights by Route {Busy-Busy, Busy-NotBusy, NotBusy-Busy, NotBusy-NotBusy} ####
+
+# Add new columns originBusiest and destBusiest to df, checking if the origin and dest columns contain the IATA codes of the 20 busiest airports. 
+
+# Define the IATA codes for the 20 busiest airports
+busiestAirportsIATA <- c("ATL", "ORD", "DEN", "DFW", "CLT", "LAX", "LAS", 
+                         "SEA", "PHX", "MCO", "LGA", "IAH", "EWR", "BOS", 
+                         "DCA", "SFO", "JFK", "DTW", "MSP", "SLC")
+
+# Add new columns to the dataframe to track if the origin or destination is one of the busiest airports
+df <- df %>%
+  mutate(
+    originBusiest = if_else(origin %in% busiestAirportsIATA, 1, 0),
+    destBusiest = if_else(dest %in% busiestAirportsIATA, 1, 0)
+  )
+#### Busiest Airports in the US -- Origin and Destination pairs ####
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Busiest Airports in the US -- Based on Arriving Flights with Delay Information
+### Table 2a: Top-20 Busiest Airports by Number of Arriving Flights with Delay Information
+
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Frequency count of the IATA codes in the destination column
+top20Airports <- df %>%
+  group_by(dest) %>%
+  summarise(
+    totalFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / totalFlights) * 100, 2),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(totalFlights)) %>%
+  slice_max(totalFlights, n = 20)
+
+# Calculate arrival delay statistics for flights that arrived late
+delayStats <- df %>%
+  dplyr::filter(arrDel15 == 1) %>%
+  dplyr::group_by(dest) %>%
+  dplyr::summarise(
+    Median = median(arrDelay),
+    Mean = round(mean(arrDelay), 1),
+    SD = round(sd(arrDelay), 1),
+    .groups = 'drop'
+  )
+
+# Merge delay statistics with flight counts
+top20Airports <- top20Airports %>%
+  dplyr::left_join(delayStats, by = "dest")
+
+# Calculate the total number of flights
+totalNumFlights <- sum(top20Airports$totalFlights)
+
+# Calculate the total number of delayed arrivals
+totalFlightsArrivedLate <- sum(top20Airports$flightsArrivedLate)
+
+# Calculate overall statistics for flights that arrived late
+overallStats <- df %>%
+  dplyr::filter(arrDel15 == 1) %>%
+  dplyr::summarise(
+    Median = median(arrDelay),
+    Mean = round(mean(arrDelay), 2),
+    SD = round(sd(arrDelay), 2),
+    .groups = 'drop'
+  ) %>%
+  dplyr::mutate(
+    dest = "Top-20 Busy Airports",
+    totalFlights = totalNumFlights,
+    flightsArrivedLate = totalFlightsArrivedLate,
+    percentArrivedLate = round((totalFlightsArrivedLate / totalNumFlights) * 100, 2)
+  )
+
+# Add a row for the total
+top20Airports <- top20Airports %>%
+  dplyr::add_row(overallStats)
+
+# Summarize the remaining non-busy airports
+remainingAirports <- df %>%
+  dplyr::filter(!(dest %in% top20Airports$dest)) %>%
+  summarise(
+    dest = "Non-Busy Airports",
+    totalFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / totalFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1]),
+    Mean = round(mean(arrDelay[arrDel15 == 1]), 2),
+    SD = round(sd(arrDelay[arrDel15 == 1]), 2)
+  )
+
+# Add the remaining non-busy airports summary to the table
+top20Airports <- bind_rows(top20Airports, remainingAirports)
+
+# Calculate the overall total summary statistics for the entire dataset
+overallTotal <- df %>%
+  summarise(
+    dest = "Total",
+    totalFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / totalFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1]),
+    Mean = round(mean(arrDelay[arrDel15 == 1]), 2),
+    SD = round(sd(arrDelay[arrDel15 == 1]), 2)
+  )
+
+# Append the overall total summary to the final table
+top20Airports <- bind_rows(top20Airports, overallTotal)
+
+# Create a dataframe for airport names and IATA codes
+airportNames <- data.frame(
+  dest = c("ATL", "DFW", "DEN", "LAX", "ORD", "JFK", "MCO", "LAS", 
+           "CLT", "MIA", "SEA", "SFO", "EWR", "PHX", "IAH", "BOS", 
+           "LGA", "DCA", "MSP", "DTW", "SLC"),  
+  airportName = c("Hartsfield–Jackson Atlanta",
+                  "Dallas Fort Worth",
+                  "Denver",
+                  "Los Angeles",
+                  "O'Hare",
+                  "John F. Kennedy",
+                  "Orlando",
+                  "Harry Reid",
+                  "Charlotte Douglas",
+                  "Miami",
+                  "Seattle–Tacoma",
+                  "San Francisco",
+                  "Newark Liberty",
+                  "Phoenix Sky Harbor",
+                  "George Bush Intercontinental",
+                  "Logan",
+                  "LaGuardia",
+                  "Ronald Reagan Washington",
+                  "Minneapolis–Saint Paul",
+                  "Detroit Metropolitan Wayne",
+                  "Salt Lake City")  
+)
+
+# Merge top20Airports with airportNames to get the airport names
+top20Airports <- top20Airports %>%
+  left_join(airportNames, by = "dest")
+
+# Create the final table with the additional columns
+airportTableWithDelays <- top20Airports %>%
+  dplyr::select(
+    `IATA` = dest, 
+    `Airport Name` = airportName, 
+    `Total Flights` = totalFlights, 
+    `Arrived Late Flights` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  ) %>%
+  mutate(`Airport Name` = ifelse(is.na(`Airport Name`), `IATA`, `Airport Name`))
+
+# Add row labels for frequency and magnitude
+header_row <- c("IATA", "Airport Name", "Total Flights", "Arrived Late Flights", "Arrived Late %", "Median", "Mean", "SD")
+
+# Create the final table with row labels
+TableTop20AirportsWithDelays <-
+  kable(airportTableWithDelays, 
+        format = "html", 
+        caption = "Table 2a: Top-20 Busiest Airports by Number of Arriving Flights with Delay Information") %>%
+  add_header_above(c(" " = 2, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#TableTop20AirportsWithDelays
+
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Add a new column named "Route" to categorize the flights based on their origin and destination airports.
+
+# Define the IATA codes for the 20 busiest airports
+busiestAirportsIATA <- c("ATL", "ORD", "DEN", "DFW", "CLT", "LAX", "LAS", 
+                         "SEA", "PHX", "MCO", "LGA", "IAH", "EWR", "BOS", 
+                         "DCA", "SFO", "JFK", "DTW", "MSP", "SLC")
+
+# Add a new column to the dataframe to categorize the route
+df <- df %>%
+  mutate(
+    originBusiest = if_else(origin %in% busiestAirportsIATA, 1, 0),
+    destBusiest = if_else(dest %in% busiestAirportsIATA, 1, 0),
+    Route = case_when(
+      originBusiest == 1 & destBusiest == 1 ~ "Busy-Busy",
+      originBusiest == 1 & destBusiest == 0 ~ "Busy-NotBusy",
+      originBusiest == 0 & destBusiest == 1 ~ "NotBusy-Busy",
+      originBusiest == 0 & destBusiest == 0 ~ "NotBusy-NotBusy"
+    )
+  )
+
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Table 2c: Frequency and Magnitude (in Minutes) of Arrival Delay for each Route
+
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Calculate the number of flights and arrival delays for each route
+routeDelaySummary <- df %>%
+  group_by(Route) %>%
+  summarise(
+    Flights = n(),
+    `Arrived Late` = sum(arrDel15 == 1),
+    `Percent Arrived Late` = round((`Arrived Late` / Flights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Calculate the overall statistics for the total
+overallRouteStats <- df %>%
+  filter(arrDel15 == 1) %>%
+  summarise(
+    Median = median(arrDelay, na.rm = TRUE),
+    Mean = round(mean(arrDelay, na.rm = TRUE), 2),
+    SD = round(sd(arrDelay, na.rm = TRUE), 2),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    Route = "Total",
+    Flights = nrow(df),
+    `Arrived Late` = sum(df$arrDel15 == 1),
+    `Percent Arrived Late` = round((`Arrived Late` / Flights) * 100, 2)
+  )
+
+# Add the total row to the summary
+routeDelaySummary <- routeDelaySummary %>%
+  add_row(overallRouteStats)
+
+# Create the final table
+TableRouteDelaySummary <- kable(routeDelaySummary, 
+                                format = "html", 
+                                caption = "Table 2c: Frequency and Magnitude (in Minutes) of Arrival Delay for each Route") %>%
+  add_header_above(c(" " = 1, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#TableRouteDelaySummary
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Summarize the overall counts and percentages of delayed departures and arrivals for each route.
+
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Summarize the overall counts and percentages for each route
+routeOverallSummary <- df %>%
+  group_by(Route) %>%
+  summarise(
+    flights = n(),
+    delayedDepartures = sum(depDelayed),
+    percentDelayedDepartures = round((delayedDepartures / flights) * 100, 2),
+    delayedArrivals = sum(arrDelayed),
+    percentDelayedArrivals = round((delayedArrivals / flights) * 100, 2),
+    .groups = 'drop'
+  )
+
+# Add a row for the total
+routeOverallSummary <- routeOverallSummary %>%
+  add_row(
+    Route = "Total",
+    flights = sum(routeOverallSummary$flights),
+    delayedDepartures = sum(routeOverallSummary$delayedDepartures),
+    percentDelayedDepartures = round((sum(routeOverallSummary$delayedDepartures) / sum(routeOverallSummary$flights)) * 100, 2),
+    delayedArrivals = sum(routeOverallSummary$delayedArrivals),
+    percentDelayedArrivals = round((sum(routeOverallSummary$delayedArrivals) / sum(routeOverallSummary$flights)) * 100, 2)
+  )
+
+# Rename columns
+routeOverallSummary <- routeOverallSummary %>%
+  rename(
+    Flights = flights,
+    `Delayed Departures` = delayedDepartures,
+    `Percent Delayed Departures` = percentDelayedDepartures,
+    `Delayed Arrivals` = delayedArrivals,
+    `Percent Delayed Arrivals` = percentDelayedArrivals
+  )
+
+# Create the final table
+TableRouteOverallSummary <- kable(routeOverallSummary, 
+                                  format = "html", 
+                                  caption = "Table 2d: Departure Delay, Arrival Delay for each Route") %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#TableRouteOverallSummary # Table 2d
+
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Summarize the number and percentage of flights for each departure and arrival delay category across routes.
+
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Summarize the counts and percentages for each category across routes
+routeSummaryByCategory <- df %>%
+  group_by(Route, departure, arrival) %>%
+  summarise(
+    countFlights = n(),
+    .groups = 'drop'
+  ) %>%
+  group_by(Route) %>%
+  mutate(
+    percentFlights = round((countFlights / sum(countFlights)) * 100, 2)
+  ) %>%
+  ungroup()
+
+# Add a row for the total for each route
+routeSummaryTotal <- routeSummaryByCategory %>%
+  group_by(Route) %>%
+  summarise(
+    departure = "Total",
+    arrival = "Total",
+    countFlights = sum(countFlights),
+    percentFlights = 100,
+    .groups = 'drop'
+  )
+
+# Combine the summary with totals, ensuring totals appear as the last row for each route
+routeSummary <- bind_rows(routeSummaryByCategory, routeSummaryTotal) %>%
+  arrange(Route, departure == "Total", arrival == "Total")
+
+# Rename columns
+routeSummary <- routeSummary %>%
+  rename(
+    `Route` = Route,
+    `Departure` = departure,
+    `Arrival` = arrival,
+    `Flights` = countFlights,
+    `Percent Flights` = percentFlights
+  )
+
+# Create the final table
+TableRouteSummaryByCategory <- kable(routeSummary, 
+                                     format = "html", 
+                                     caption = "Table 2e: Departure * Arrival Delay Interaction for each Route") %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#TableRouteSummaryByCategory # Table 2e
+
+
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## New Table 2b: Flights by Route {Busy-Busy, Busy-NotBusy, NotBusy-Busy, NotBusy-NotBusy} ########
+
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Summarize the counts and percentages for each route category
+routeSummary <- df %>%
+  group_by(Route) %>%
+  summarise(
+    CountFlights = n(),
+    PercentageFlights = round((CountFlights / nrow(df)) * 100, 2),
+    .groups = 'drop'
+  )
+
+# Add a row for the total
+routeSummary <- routeSummary %>%
+  add_row(Route = "Total", CountFlights = sum(routeSummary$CountFlights), PercentageFlights = 100)
+
+# Rename columns
+routeSummary <- routeSummary %>%
+  rename(
+    Flights = CountFlights,
+    `Percentage Flights` = PercentageFlights
+  )
+
+# Display the table using kable
+TableRouteSummary <- kable(routeSummary, 
+                           format = "html", 
+                           caption = "Table 2b: Flights by Route {Busy-Busy, Busy-NotBusy, NotBusy-Busy, NotBusy-NotBusy}") %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#TableRouteSummary # Table 2b
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+####### End AIRPORTS ########
+##################################
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+##################################
+####### Begin TIME PERIOD ########
+
+# Reformat date using lubridate
+library(lubridate)
+df$flDate <- as.Date(mdy_hms(df$flDate))
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# convert to factor variable: "year", "quarter", "month", "dayOfMonth", "dayOfWeek"
+df <- df %>%
+  mutate(
+    year = factor(year),
+    quarter = factor(quarter),
+    month = factor(month),
+    dayOfMonth = factor(dayOfMonth),
+    dayOfWeek = factor(dayOfWeek)
+  )
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Ensure month is a factor and set levels starting with January
+df$month <- factor(df$month, 
+                   levels = 1:12, 
+                   labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))
+
+# Relabel the dayOfWeek factor levels to abbreviated day names
+df$dayOfWeek <- factor(df$dayOfWeek, 
+                       levels = 1:7, 
+                       labels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Add a new column 'weekend' that checks the day of the week
+df <- df %>%
+  mutate(weekend = factor(if_else(dayOfWeek %in% c("Sat", "Sun"), "Weekend", "Weekday"),
+                          levels = c("Weekday", "Weekend")))
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Seasonality:  Track departure and arrival time as AM or PM
+df <- df %>%
+  mutate(
+    depTimeAMPM = factor(if_else(depTime < 1200, "AM", "PM"), levels = c("AM", "PM")),
+    arrTimeAMPM = factor(if_else(arrTime < 1200, "AM", "PM"), levels = c("AM", "PM"))
+  )
+####### End TIME PERIOD ########
+##################################
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## TIME PERIOD ########
+# Table A3: Time Period Information
+timeperiod <- data.frame(
+  `Column Name` = c("year", "quarter", "month", "dayOfMonth", "dayOfWeek", "weekend", "flDate"),
+  Description = c("Year", "Quarter (1-4)", "Month (Jan, Feb,..Dec)", "Day of Month (1,2,..31)", "Day of Week (Mon, Tue.. Sun)","Weekend / Weekday", "Flight Date (yyyy-mm-dd)")
+)
+
+TableTimeperiod <-
+  kable(timeperiod, 
+        format = "pandoc", 
+        caption = "Table A3: Time Period Information")
+######## TIME PERIOD ########
+```
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############ BEGIN LongWeekend SETUP ###########
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+######## Major US HOLIDAYS
+# Define the holidays with their names and dates
+holidays <- data.frame(
+  NameOfHoliday = c("New Year's Day", "Martin Luther King Jr. Day", "Presidents' Day", "Memorial Day",
+                    "Independence Day", "Labor Day", "Columbus Day", "Veterans Day", 
+                    "Thanksgiving Day", "Christmas Day", "New Year's Eve"),
+  DateOfHoliday = c("2023-01-01", "2023-01-16", "2023-02-20", "2023-05-29",
+                    "2023-07-04", "2023-09-04", "2023-10-09", "2023-11-11",
+                    "2023-11-23", "2023-12-25", "2023-12-31")
+)
+
+# Convert the DateOfHoliday to Date class
+holidays$DateOfHoliday <- as.Date(holidays$DateOfHoliday)
+
+# Add the day of the week for each holiday
+holidays$DayOfWeek <- weekdays(holidays$DateOfHoliday)
+
+# Display the table using kable
+TableUSHolidays <-
+  kable(holidays, 
+        format = "pandoc", 
+        caption = "Table 7a: National Holidays in the United States ")
+##### Table 7a: National Holidays in the United States 
+```
+
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+##### MODIFY Generate a list of major US holidays and the Long Weekends corresponding to them 
+
+# Define the holidays and their dates
+holidays <- data.frame(
+  nameOfHoliday = c("New Year's Day", "Martin Luther King Jr. Day", "Presidents' Day", "Memorial Day",
+                    "Independence Day", "Labor Day", "Columbus Day", "Veterans Day",
+                    "Thanksgiving Day", "Christmas Day", "New Year's Eve"),
+  dateOfHoliday = as.Date(c("2023-01-01", "2023-01-16", "2023-02-20", "2023-05-29",
+                            "2023-07-04", "2023-09-04", "2023-10-09", "2023-11-11",
+                            "2023-11-23", "2023-12-25", "2023-12-31"))
+)
+
+# Function to add specific adjacent days based on the day of the week
+addAdjacentDays <- function(date) {
+  c(date,
+    date - 1,  # Day before
+    date + 1,  # Day after
+    if (weekdays(date) == "Friday") date + 2,  # Extending if Friday
+    if (weekdays(date) == "Thursday") date + 3  # Extending if Thursday
+  )
+}
+
+# Generate a list of dates for each holiday including the specific additional days
+holidays$extendedDates <- lapply(holidays$dateOfHoliday, addAdjacentDays)
+
+# Create an expanded dataframe that includes all extended dates tagged with their holiday
+expandedDates <- do.call(rbind, lapply(seq_along(holidays$extendedDates), function(i) {
+  data.frame(Date = as.Date(holidays$extendedDates[[i]]),
+             nameOfHoliday = holidays$nameOfHoliday[i])
+}))
+
+# Remove duplicates and sort
+expandedDates <- expandedDates %>%
+  distinct() %>%
+  arrange(Date)
+
+# Calculate the differences to find consecutive dates
+expandedDates <- expandedDates %>%
+  mutate(NextDateDiff = lead(Date) - Date)
+
+# Find long weekends based on consecutive dates
+expandedDates$isPartOfLongWeekend <- expandedDates$NextDateDiff == 1 | lag(expandedDates$NextDateDiff) == 1
+
+# Filter to get only the long weekend dates
+longWeekendDates <- expandedDates %>%
+  filter(isPartOfLongWeekend)
+
+# Generate a summary table with holiday names and add weekdays
+longWeekendDates <- longWeekendDates %>%
+  mutate(DayOfWeek = weekdays(Date)) %>%
+  select(Date, DayOfWeek, nameOfHoliday)
+
+# Filter out dates not in 2023
+longWeekendDates2023 <- longWeekendDates %>%
+  filter(year(Date) == 2023)
+
+# Generate a summary table with holiday names and add weekdays
+longWeekendDates2023 <- longWeekendDates2023 %>%
+  mutate(DayOfWeek = weekdays(Date)) %>%
+  select(Date, DayOfWeek, nameOfHoliday)
+
+# Display the long weekends only for 2023
+TableLongWeekend <- 
+  kable(longWeekendDates2023, 
+        format = "pandoc", 
+        caption = "Table 7: Long Weekends in the United States for 2023 with Corresponding Holidays")
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+##### Add a data column isLongWeekend to track if a flight date falls on a long weekend
+
+# Ensure 'flDate' is of Date type
+df$flDate <- as.Date(df$flDate)
+
+# Check if each flight date is in the list of long weekend dates
+df$isLongWeekend <- df$flDate %in% longWeekendDates2023$Date
+# Now 'df' has an additional column 'isLongWeekend' that is TRUE if the flight occurs on a long weekend
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############ END LongWeekend SETUP ###########
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#########################################
+####### Begin FLIGHT PERFORMANCE ########
+
+# Table A3: Flight Performance Metrics 
+flightPerformanceMetrics <- data.frame(
+  `Column Name` = c("mktUniqueCarrier", 
+                    "crsDepTime", 
+                    "depTime", 
+                    "depTimeAMPM",  # Added AM/PM categorization for departure time
+                    "depDelay", 
+                    "depDelayNew", 
+                    "depDel15", 
+                    "taxiOut", 
+                    "wheelsOff", 
+                    "wheelsOn", 
+                    "taxiIn", 
+                    "crsArrTime", 
+                    "arrTime", 
+                    "arrTimeAMPM",  # Added AM/PM categorization for arrival time
+                    "arrDelay", 
+                    "arrDelayNew", 
+                    "arrDel15", 
+                    "cancelled", 
+                    "cancellationCode", 
+                    "diverted", 
+                    "crsElapsedTime",
+                    "actualElapsedTime", 
+                    "airTime", 
+                    "distance"),
+  Description = c("Airline that sold the flight",
+                  "Scheduled Departure Time", 
+                  "Actual Departure Time",
+                  "AM/PM Categorization of Departure Time",  # Description for depTimeAMPM
+                  "Departure Delay in minutes, where (depDelay = depTime - crsDepTime)", 
+                  "Departure Delay in minutes (zero for early departure)", 
+                  "Departure Delay > 15 minutes (1=Yes, 0=No)", 
+                  "Taxi Out Time in minutes, where (taxiOut = wheelsOff - depTime)", 
+                  "Wheels Off Time", 
+                  "Wheels On Time", 
+                  "Taxi In Time, where (taxiIn = arrTime - wheelsOn)", 
+                  "Scheduled Arrival Time", 
+                  "Actual Arrival Time", 
+                  "AM/PM Categorization of Arrival Time",  # Description for arrTimeAMPM
+                  "Arrival Delay in minutes, where (arrDelay = arrTime - crsArrTime)", 
+                  "Arrival Delay in minutes (zero for early arrival)", 
+                  "Arrival Delay > 15 minutes (1=Yes)", 
+                  "Cancelled Flight Indicator (1=Yes)", 
+                  "Specifies The Reason For Cancellation", 
+                  "Diverted Flight Indicator (1=Yes, 0=No)", 
+                  "Scheduled Elapsed Time of Flight in minutes, where (crsElapsedTime = crsArrTime - crsDepTime)", 
+                  "Actual Elapsed Time of Flight in minutes, where (actualElapsedTime = ArrTime - DepTime)", 
+                  "Flight Time in minutes, where (airTime = wheelsOn - wheelsOff)", 
+                  "Distance between airports in miles")
+)
+
+# Use kable to format the updated table
+TableFlightPerformance <- 
+  kable(flightPerformanceMetrics, 
+        format = "pandoc", 
+        caption = "Table A4: Flight Performance Metrics")
+
+```
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+########################################################
+##### Appendix A4 -- Table A5: List CAUSES OF DELAY ####
+
+causeDelay <- data.frame(
+  `Delay` = c("carrierDelay", 
+                    "weatherDelay", 
+                    "nasDelay", 
+                    "securityDelay", 
+                    "lateAircraftDelay"),
+  Description = c("Carrier Delay in minutes", 
+                  "Weather Delay in minutes", 
+                  "National Air System Delay in minutes", 
+                  "Security Delay in minutes", 
+                  "Late Aircraft Delay in minutes")
+)
+
+# Use kable to format the updated table
+TableFlightDelayCauses <-
+  kable(causeDelay, 
+      format = "pandoc", 
+      caption = "Table A5: Causes of Delay")
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 3a: Distribution / Count of CAUSES OF DELAY ####
+
+# Load necessary libraries
+library(dplyr)
+
+# Filter the flights that arrived late
+lateFlights <- df %>%
+  filter(arrDel15 == 1)
+
+# Calculate the sum of the delay minutes for the five reasons for each flight
+lateFlights <- lateFlights %>%
+  mutate(totalReasonDelay = carrierDelay + weatherDelay + nasDelay + securityDelay + lateAircraftDelay)
+
+# Compare this sum with the total arrival delay for each flight
+delayComparison <- lateFlights %>%
+  mutate(isMatched = totalReasonDelay == arrDelay)
+
+# Summarize the results
+summaryResults <- delayComparison %>%
+  summarise(
+    totalLateFlights = n(),
+    matchedDelays = sum(isMatched),
+    unmatchedDelays = sum(!isMatched),
+    percentMatched = round((matchedDelays / totalLateFlights) * 100, 2),
+    percentUnmatched = round((unmatchedDelays / totalLateFlights) * 100, 2)
+  )
+
+# Display the summary results
+#summaryResults
+##### Table 3a: Distribution / Count of CAUSES OF DELAY ####
+############################################################
+```
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 3a: Frequency of Causes of Flight Delay ####
+
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Calculate the frequency of each type of delay
+delayFrequency <- df %>%
+  filter(arrDel15 == 1) %>%
+  summarise(
+    totalLateFlights = n(),
+    carrierDelayFreq = sum(carrierDelay > 0, na.rm = TRUE),
+    weatherDelayFreq = sum(weatherDelay > 0, na.rm = TRUE),
+    nasDelayFreq = sum(nasDelay > 0, na.rm = TRUE),
+    securityDelayFreq = sum(securityDelay > 0, na.rm = TRUE),
+    lateAircraftDelayFreq = sum(lateAircraftDelay > 0, na.rm = TRUE)
+  )
+
+# Calculate the percentages
+delayFrequency <- delayFrequency %>%
+  mutate(
+    carrierDelayPercent = round((carrierDelayFreq / totalLateFlights) * 100, 2),
+    weatherDelayPercent = round((weatherDelayFreq / totalLateFlights) * 100, 2),
+    nasDelayPercent = round((nasDelayFreq / totalLateFlights) * 100, 2),
+    securityDelayPercent = round((securityDelayFreq / totalLateFlights) * 100, 2),
+    lateAircraftDelayPercent = round((lateAircraftDelayFreq / totalLateFlights) * 100, 2)
+  )
+
+# Create the frequency table
+frequencyTable <- data.frame(
+  Type = c("Carrier Delay", "Weather Delay", "National Air System (NAS) Delay", "Security Delay", "Late Aircraft Delay"),
+  Frequency = c(delayFrequency$carrierDelayFreq, delayFrequency$weatherDelayFreq, delayFrequency$nasDelayFreq, delayFrequency$securityDelayFreq, delayFrequency$lateAircraftDelayFreq),
+  Percentage = c(delayFrequency$carrierDelayPercent, delayFrequency$weatherDelayPercent, delayFrequency$nasDelayPercent, delayFrequency$securityDelayPercent, delayFrequency$lateAircraftDelayPercent)
+)
+
+# Sort the table by Frequency in decreasing order
+frequencyTable <- frequencyTable %>%
+  arrange(desc(Frequency))
+
+# Display the frequency table using kable
+Table3a <- kable(frequencyTable, 
+                 format = "html", 
+                 caption = "Table 3a: Frequency of Causes of Flight Delay") %>%
+  kable_styling(full_width = F, position = "center")
+
+##### Table 3a: Frequency of Causes of Flight Delay ####
+############################################################
+
+```
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#############################################################################
+##### Table 3b: Magnitude of Flight Delay (minutes) for different Causes ####
+
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Calculate summary statistics for each type of delay
+delaySummary <- df %>%
+  filter(arrDel15 == 1) %>%
+  summarise(
+    carrierDelay_Sum = sum(carrierDelay, na.rm = TRUE),
+    carrierDelay_Mean = mean(carrierDelay, na.rm = TRUE),
+    carrierDelay_SD = sd(carrierDelay, na.rm = TRUE),
+    
+    weatherDelay_Sum = sum(weatherDelay, na.rm = TRUE),
+    weatherDelay_Mean = mean(weatherDelay, na.rm = TRUE),
+    weatherDelay_SD = sd(weatherDelay, na.rm = TRUE),
+    
+    nasDelay_Sum = sum(nasDelay, na.rm = TRUE),
+    nasDelay_Mean = mean(nasDelay, na.rm = TRUE),
+    nasDelay_SD = sd(nasDelay, na.rm = TRUE),
+    
+    securityDelay_Sum = sum(securityDelay, na.rm = TRUE),
+    securityDelay_Mean = mean(securityDelay, na.rm = TRUE),
+    securityDelay_SD = sd(securityDelay, na.rm = TRUE),
+    
+    lateAircraftDelay_Sum = sum(lateAircraftDelay, na.rm = TRUE),
+    lateAircraftDelay_Mean = mean(lateAircraftDelay, na.rm = TRUE),
+    lateAircraftDelay_SD = sd(lateAircraftDelay, na.rm = TRUE)
+  )
+
+# Reshape the data to have summary statistics in columns
+delaySummaryTable <- delaySummary %>%
+  pivot_longer(everything(), names_to = c("Type", "Statistic"), names_sep = "_") %>%
+  pivot_wider(names_from = Statistic, values_from = value)
+
+# Update the Type column with specific values
+delaySummaryTable <- delaySummaryTable %>%
+  mutate(Type = recode(Type,
+                       "carrierDelay" = "Carrier Delay",
+                       "weatherDelay" = "Weather Delay",
+                       "nasDelay" = "National Air System (NAS) Delay",
+                       "securityDelay" = "Security Delay",
+                       "lateAircraftDelay" = "Late Aircraft Delay"))
+
+# Apply rounding and conversion
+delaySummaryTable <- delaySummaryTable %>%
+  mutate(across(c(Sum), ~ round(.))) %>%
+  mutate(across(c(Mean, SD), ~ round(., 2)))
+
+# Sort the table in decreasing order of Sum
+delaySummaryTable <- delaySummaryTable %>%
+  arrange(desc(Sum))
+
+# Display the table using kable
+TableDelaySummary <- kable(delaySummaryTable, 
+                           format = "html", 
+                           caption = "Table 3b: Magnitude of Flight Delay (minutes) for different Causes") %>%
+  kable_styling(full_width = F, position = "center")
+
+
+##### Table 3b: Magnitude of Flight Delay (minutes) for different Causes ####
+#############################################################################
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+############################################################
+##### Table 4a: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Summarize the arrival delay by arrival time (AM/PM)
+arrivalTimeDelay <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay)) %>%
+  group_by(arrTimeAMPM) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1)
+  )
+
+# Calculate the total number of flights and delayed arrivals
+totalNumFlights <- sum(arrivalTimeDelay$numFlights, na.rm = TRUE)
+totalFlightsArrivedLate <- sum(arrivalTimeDelay$flightsArrivedLate, na.rm = TRUE)
+
+# Calculate overall statistics for flights that arrived late
+overallStats <- df %>%
+  filter(arrDel15 == 1) %>%
+  summarise(
+    Median = median(arrDelay, na.rm = TRUE),
+    Mean = round(mean(arrDelay, na.rm = TRUE), 2),
+    SD = round(sd(arrDelay, na.rm = TRUE), 2)
+  ) %>%
+  mutate(
+    arrTimeAMPM = "Total",
+    numFlights = totalNumFlights,
+    flightsArrivedLate = totalFlightsArrivedLate,
+    percentArrivedLate = round((flightsArrivedLate / totalNumFlights) * 100, 2)
+  )
+
+# Add a row for the total
+arrivalTimeDelay <- arrivalTimeDelay %>%
+  add_row(overallStats)
+
+# Create the final table with the additional columns
+arrivalTimeDelayTable <- arrivalTimeDelay %>%
+  select(
+    `Arrival Time` = arrTimeAMPM, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Add row labels for frequency and magnitude
+header_row <- c("Arrival Time", "Total Flights", "Arrived Late", "Arrived Late %", "Median", "Mean", "SD")
+
+# Create the final table with row labels
+tableArrivalTimeDelay <- kable(arrivalTimeDelayTable, 
+        format = "html", 
+        caption = "Table 4a: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM)") %>%
+  add_header_above(c(" " = 1, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableArrivalTimeDelay # Table 4a
+
+##### Table 4a: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) ####
+############################################################
+```
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 4b: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Airline ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Summarize the arrival delay by arrival time (AM/PM) and airline
+arrivalTimeAirlineDelay <- df %>%
+  group_by(arrTimeAMPM, airlineName) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay by arrival time (AM/PM) across all airlines
+arrivalTimeTotal <- df %>%
+  group_by(arrTimeAMPM) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    airlineName = "Total",
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay across all flights
+totalStats <- df %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    arrTimeAMPM = "Total",
+    airlineName = "Total",
+    .groups = 'drop'
+  )
+
+# Combine the summarized data
+arrivalTimeAirlineDelay <- arrivalTimeAirlineDelay %>%
+  bind_rows(arrivalTimeTotal) %>%
+  bind_rows(totalStats)
+
+# Separate the total rows to append them at the end
+totals <- arrivalTimeAirlineDelay %>%
+  filter(airlineName == "Total" | arrTimeAMPM == "Total")
+
+# Filter out the total rows from the main data
+arrivalTimeAirlineDelay <- arrivalTimeAirlineDelay %>%
+  filter(!(airlineName == "Total" | arrTimeAMPM == "Total"))
+
+# Sort the data by Airline
+arrivalTimeAirlineDelay <- arrivalTimeAirlineDelay %>%
+  arrange(airlineName, arrTimeAMPM)
+
+# Append the total rows at the end
+arrivalTimeAirlineDelay <- arrivalTimeAirlineDelay %>%
+  bind_rows(totals)
+
+# Create the final table with the additional columns
+arrivalTimeAirlineDelayTable <- arrivalTimeAirlineDelay %>%
+  select(
+    `Airline` = airlineName,
+    `Arrival Time` = arrTimeAMPM, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Create the final table with row labels
+tableArrivalTimeAirlineDelay <- kable(arrivalTimeAirlineDelayTable, 
+        format = "html", 
+        caption = "Table 4b: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Airline") %>%
+  add_header_above(c(" " = 2, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableArrivalTimeAirlineDelay # Table 4b
+
+##### Table 4b: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Airline ####
+############################################################
+```
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 4c: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Route ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Summarize the arrival delay by arrival time (AM/PM) and route
+arrivalTimeRouteDelay <- df %>%
+  group_by(arrTimeAMPM, Route) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay by arrival time (AM/PM) across all routes
+arrivalTimeTotal <- df %>%
+  group_by(arrTimeAMPM) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    Route = "Total",
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay across all flights
+totalStats <- df %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    arrTimeAMPM = "Total",
+    Route = "Total",
+    .groups = 'drop'
+  )
+
+# Combine the summarized data
+arrivalTimeRouteDelay <- arrivalTimeRouteDelay %>%
+  bind_rows(arrivalTimeTotal) %>%
+  bind_rows(totalStats)
+
+# Separate the total rows to append them at the end
+totals <- arrivalTimeRouteDelay %>%
+  filter(Route == "Total" | arrTimeAMPM == "Total")
+
+# Filter out the total rows from the main data
+arrivalTimeRouteDelay <- arrivalTimeRouteDelay %>%
+  filter(!(Route == "Total" | arrTimeAMPM == "Total"))
+
+# Sort the data by Route
+arrivalTimeRouteDelay <- arrivalTimeRouteDelay %>%
+  arrange(Route, arrTimeAMPM)
+
+# Append the total rows at the end
+arrivalTimeRouteDelay <- arrivalTimeRouteDelay %>%
+  bind_rows(totals)
+
+# Create the final table with the additional columns
+arrivalTimeRouteDelayTable <- arrivalTimeRouteDelay %>%
+  select(
+    `Route` = Route,
+    `Arrival Time` = arrTimeAMPM, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Create the final table with row labels
+tableArrivalTimeRouteDelay <- kable(arrivalTimeRouteDelayTable, 
+        format = "html", 
+        caption = "Table 4c: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Route") %>%
+  add_header_above(c(" " = 2, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+# tableArrivalTimeRouteDelay # Table 4c
+
+##### Table 4c: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Route ####
+###########################################################
+```
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 5a: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Summarize the arrival delay by weekend/weekday
+weekendDelay <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay)) %>%
+  group_by(weekend) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1)
+  )
+
+# Calculate the total number of flights and delayed arrivals
+totalNumFlights <- sum(weekendDelay$numFlights, na.rm = TRUE)
+totalFlightsArrivedLate <- sum(weekendDelay$flightsArrivedLate, na.rm = TRUE)
+
+# Calculate overall statistics for flights that arrived late
+overallStats <- df %>%
+  filter(arrDel15 == 1) %>%
+  summarise(
+    Median = median(arrDelay, na.rm = TRUE),
+    Mean = round(mean(arrDelay, na.rm = TRUE), 2),
+    SD = round(sd(arrDelay, na.rm = TRUE), 2)
+  ) %>%
+  mutate(
+    weekend = "Total",
+    numFlights = totalNumFlights,
+    flightsArrivedLate = totalFlightsArrivedLate,
+    percentArrivedLate = round((totalFlightsArrivedLate / totalNumFlights) * 100, 2)
+  )
+
+# Add a row for the total
+weekendDelay <- weekendDelay %>%
+  add_row(overallStats)
+
+# Create the final table with the additional columns
+weekendDelayTable <- weekendDelay %>%
+  select(
+    `Arrival Day` = weekend, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Add row labels for frequency and magnitude
+header_row <- c("Arrival Day", "Total Flights", "Arrived Late", "Arrived Late %", "Median", "Mean", "SD")
+
+# Create the final table with row labels
+tableWeekendDelay <- kable(weekendDelayTable, 
+        format = "html", 
+        caption = "Table 5a: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday)") %>%
+  add_header_above(c(" " = 1, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableWeekendDelay # Table 5a
+
+##### Table 5a: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) ####
+############################################################
+```
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 5b: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Airline ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Summarize the arrival delay by weekend/weekday and airline
+weekendAirlineDelay <- df %>%
+  group_by(weekend, airlineName) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay by weekend/weekday across all airlines
+weekendTotal <- df %>%
+  group_by(weekend) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    airlineName = "Total",
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay across all flights
+totalStats <- df %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    weekend = "Total",
+    airlineName = "Total",
+    .groups = 'drop'
+  )
+
+# Combine the summarized data
+weekendAirlineDelay <- weekendAirlineDelay %>%
+  bind_rows(weekendTotal) %>%
+  bind_rows(totalStats)
+
+# Separate the total rows to append them at the end
+totals <- weekendAirlineDelay %>%
+  filter(airlineName == "Total" | weekend == "Total")
+
+# Filter out the total rows from the main data
+weekendAirlineDelay <- weekendAirlineDelay %>%
+  filter(!(airlineName == "Total" | weekend == "Total"))
+
+# Sort the data by Airline
+weekendAirlineDelay <- weekendAirlineDelay %>%
+  arrange(airlineName, weekend)
+
+# Append the total rows at the end
+weekendAirlineDelay <- weekendAirlineDelay %>%
+  bind_rows(totals)
+
+# Create the final table with the additional columns
+weekendAirlineDelayTable <- weekendAirlineDelay %>%
+  select(
+    `Airline` = airlineName,
+    `Arrival Day` = weekend, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Create the final table with row labels
+tableWeekendAirlineDelay <- kable(weekendAirlineDelayTable, 
+        format = "html", 
+        caption = "Table 5b: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Airline") %>%
+  add_header_above(c(" " = 2, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableWeekendAirlineDelay # Table 5b
+
+##### Table 5b: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Airline ####
+############################################################
+```
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 5c: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Route ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Summarize the arrival delay by weekend/weekday and route
+weekendRouteDelay <- df %>%
+  group_by(weekend, Route) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay by weekend/weekday across all routes
+weekendTotal <- df %>%
+  group_by(weekend) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    Route = "Total",
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay across all flights
+totalStats <- df %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    weekend = "Total",
+    Route = "Total",
+    .groups = 'drop'
+  )
+
+# Combine the summarized data
+weekendRouteDelay <- weekendRouteDelay %>%
+  bind_rows(weekendTotal) %>%
+  bind_rows(totalStats)
+
+# Separate the total rows to append them at the end
+totals <- weekendRouteDelay %>%
+  filter(Route == "Total" | weekend == "Total")
+
+# Filter out the total rows from the main data
+weekendRouteDelay <- weekendRouteDelay %>%
+  filter(!(Route == "Total" | weekend == "Total"))
+
+# Sort the data by Route
+weekendRouteDelay <- weekendRouteDelay %>%
+  arrange(Route, weekend)
+
+# Append the total rows at the end
+weekendRouteDelay <- weekendRouteDelay %>%
+  bind_rows(totals)
+
+# Create the final table with the additional columns
+weekendRouteDelayTable <- weekendRouteDelay %>%
+  select(
+    `Route` = Route,
+    `Arrival Day` = weekend, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Create the final table with row labels
+tableWeekendRouteDelay <- kable(weekendRouteDelayTable, 
+        format = "html", 
+        caption = "Table 5c: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Route") %>%
+  add_header_above(c(" " = 2, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableWeekendRouteDelay # Table 5c
+
+##### Table 5c: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Route ####
+############################################################
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 6a: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Summarize the arrival delay by day of the week
+dayOfWeekDelay <- df %>%
+  group_by(dayOfWeek) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Calculate the total number of flights and delayed arrivals
+totalNumFlights <- sum(dayOfWeekDelay$numFlights, na.rm = TRUE)
+totalFlightsArrivedLate <- sum(dayOfWeekDelay$flightsArrivedLate, na.rm = TRUE)
+
+# Calculate overall statistics for flights that arrived late
+overallStats <- df %>%
+  filter(arrDel15 == 1) %>%
+  summarise(
+    Median = median(arrDelay, na.rm = TRUE),
+    Mean = round(mean(arrDelay, na.rm = TRUE), 2),
+    SD = round(sd(arrDelay, na.rm = TRUE), 2)
+  ) %>%
+  mutate(
+    dayOfWeek = "Total",
+    numFlights = totalNumFlights,
+    flightsArrivedLate = totalFlightsArrivedLate,
+    percentArrivedLate = round((totalFlightsArrivedLate / totalNumFlights) * 100, 2)
+  )
+
+# Add a row for the total
+dayOfWeekDelay <- dayOfWeekDelay %>%
+  add_row(overallStats)
+
+# Create the final table with the additional columns
+dayOfWeekDelayTable <- dayOfWeekDelay %>%
+  select(
+    `Day Of The Week` = dayOfWeek, 
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Add row labels for frequency and magnitude
+header_row <- c("Day Of The Week", "Total Flights", "Arrived Late", "Arrived Late %", "Median", "Mean", "SD")
+
+# Create the final table with row labels
+tableDayOfWeekDelay <- kable(dayOfWeekDelayTable, 
+        format = "html", 
+        caption = "Table 6a: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun)") %>%
+  add_header_above(c(" " = 1, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableDayOfWeekDelay # Table 6a
+
+##### Table 6a: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) ####
+############################################################
+
+```
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 6b: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Airline ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Summarize the arrival delay by day of the week and airline
+dayOfWeekAirlineDelay <- df %>%
+  group_by(dayOfWeek, airlineName) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay by day of the week across all airlines
+dayOfWeekTotal <- df %>%
+  group_by(dayOfWeek) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    airlineName = "Total",
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay across all flights
+totalStats <- df %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    dayOfWeek = "Total",
+    airlineName = "Total",
+    .groups = 'drop'
+  )
+
+# Combine the summarized data
+dayOfWeekAirlineDelay <- dayOfWeekAirlineDelay %>%
+  bind_rows(dayOfWeekTotal) %>%
+  bind_rows(totalStats)
+
+# Define the correct order for days of the week
+dayOrder <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+# Separate the total rows to append them at the end
+totals <- dayOfWeekAirlineDelay %>%
+  filter(airlineName == "Total" | dayOfWeek == "Total")
+
+# Filter out the total rows from the main data
+dayOfWeekAirlineDelay <- dayOfWeekAirlineDelay %>%
+  filter(!(airlineName == "Total" | dayOfWeek == "Total"))
+
+# Sort the data by Airline and day of the week
+dayOfWeekAirlineDelay <- dayOfWeekAirlineDelay %>%
+  mutate(dayOfWeek = factor(dayOfWeek, levels = dayOrder)) %>%
+  arrange(airlineName, dayOfWeek)
+
+# Append the total rows at the end
+dayOfWeekAirlineDelay <- dayOfWeekAirlineDelay %>%
+  bind_rows(totals)
+
+# Create the final table with the additional columns
+dayOfWeekAirlineDelayTable <- dayOfWeekAirlineDelay %>%
+  select(
+    `Airline` = airlineName,
+    `Day Of The Week` = dayOfWeek,
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Create the final table with row labels
+tableDayOfWeekAirlineDelay <- kable(dayOfWeekAirlineDelayTable, 
+        format = "html", 
+        caption = "Table 6b: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Airline") %>%
+  add_header_above(c(" " = 2, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableDayOfWeekAirlineDelay # Table 6b
+
+##### Table 6b: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Airline ####
+############################################################
+
+```
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############################################################
+##### Table 6c: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Route ####
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# Filter out rows with NA values in arrDel15 or arrDelay
+df <- df %>%
+  filter(!is.na(arrDel15) & !is.na(arrDelay))
+
+# Summarize the arrival delay by day of the week and route
+dayOfWeekRouteDelay <- df %>%
+  group_by(dayOfWeek, Route) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay by day of the week across all routes
+dayOfWeekTotal <- df %>%
+  group_by(dayOfWeek) %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    Route = "Total",
+    .groups = 'drop'
+  )
+
+# Summarize the arrival delay across all flights
+totalStats <- df %>%
+  summarise(
+    numFlights = n(),
+    flightsArrivedLate = sum(arrDel15 == 1),
+    percentArrivedLate = round((flightsArrivedLate / numFlights) * 100, 2),
+    Median = median(arrDelay[arrDel15 == 1], na.rm = TRUE),
+    Mean = round(mean(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    SD = round(sd(arrDelay[arrDel15 == 1], na.rm = TRUE), 1),
+    dayOfWeek = "Total",
+    Route = "Total",
+    .groups = 'drop'
+  )
+
+# Combine the summarized data
+dayOfWeekRouteDelay <- dayOfWeekRouteDelay %>%
+  bind_rows(dayOfWeekTotal) %>%
+  bind_rows(totalStats)
+
+# Define the correct order for days of the week
+dayOrder <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+# Separate the total rows to append them at the end
+totals <- dayOfWeekRouteDelay %>%
+  filter(Route == "Total" | dayOfWeek == "Total")
+
+# Filter out the total rows from the main data
+dayOfWeekRouteDelay <- dayOfWeekRouteDelay %>%
+  filter(!(Route == "Total" | dayOfWeek == "Total"))
+
+# Sort the data by Route and day of the week
+dayOfWeekRouteDelay <- dayOfWeekRouteDelay %>%
+  mutate(dayOfWeek = factor(dayOfWeek, levels = dayOrder)) %>%
+  arrange(Route, dayOfWeek)
+
+# Append the total rows at the end
+dayOfWeekRouteDelay <- dayOfWeekRouteDelay %>%
+  bind_rows(totals)
+
+# Create the final table with the additional columns
+dayOfWeekRouteDelayTable <- dayOfWeekRouteDelay %>%
+  select(
+    `Route` = Route,
+    `Day Of The Week` = dayOfWeek,
+    `Flights` = numFlights, 
+    `Arrived Late` = flightsArrivedLate, 
+    `Arrived Late %` = percentArrivedLate,
+    `Median` = Median,
+    `Mean` = Mean,
+    `SD` = SD
+  )
+
+# Create the final table with row labels
+tableDayOfWeekRouteDelay <- kable(dayOfWeekRouteDelayTable, 
+        format = "html", 
+        caption = "Table 6c: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Route") %>%
+  add_header_above(c(" " = 2, "Frequency of Arrival Delay" = 3, "Magnitude of Arrival Delay (minutes)" = 3)) %>%
+  kable_styling(full_width = F, position = "center")
+
+# Print the table
+#tableDayOfWeekRouteDelay # Table 6c
+
+##### Table 6c: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Route ####
+############################################################
+
+```
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############# BEGIN WRITING ###########
+# Hint: Do All Data Processing and Analysis Above This Line, as far as possible
+# Hint: Save all analysis output (e.g. Tables) in variables Above This Line
+# Hint: Use the saved variables and Focus on Writing and Discussion Below This Line
+```
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############# BEGIN DESCRIBING THE DATA AND DATA COLUMNS ###########
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Calculate the total number of flights
+totalFlights <- nrow(df)
+```
+
+# Data Description.
+
+## Flight Delay across Airlines
+
+Our dataset includes a total of `r totalFlights` domestic flights that flew within the United States in 2023, operated by 10 airlines, as summarized in *Table 1a*. The complete data dictionary is available in Appendix A.
+
+*<Insert Table 1a>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 1a: TableFlightsByAirlines ########
+#TableFlightsByAirlines
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Calculate the sum of the market share of the top 4 airlines
+top4MarketShare <- sum(flightCounts$percentageOfFlights[1:4])
+```
+
+The top four airlines by market share were American (AA), Delta (DL), Southwest (WN), and United (UA), together accounting for **`r top4MarketShare`%** of all US domestic flights in 2023, while the remaining six airlines jointly accounted for the remaining **`r (100-top4MarketShare)`%** of flights. Since the top-4 airlines collectively handled the majority `r top4MarketShare`% of the domestic air traffic in the United States, we merge the remaining 6 airlines under the header "Other" Airlines. 
+
+**Definition**: *Departure delay* and *Arrival delay* are defined using a 15-minute threshold, a standard metric in the aviation industry. A *Departure Delay* occurs when a flight departs more than 15 minutes after its scheduled departure time. Similarly, an *Arrival Delay* is recorded when a flight arrives more than 15 minutes later than its scheduled arrival time. Flights departing or arriving within this 15-minute window are considered on time. These delays are measured in minutes and are crucial for evaluating the punctuality and operational efficiency of flights across different routes and airports.
+
+Next, we will review the summary statistics of arrival delay. *Table 1b* breaks down the arrival delays for different airlines.
+
+*<Insert Table 1b>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 1b: Frequency and Magnitude of Arrival Delay by Airline ########
+#TableAirlinesDelay
+```
+
+
+### Frequency of Arrival Delay
+
+Considering all the airlines and flights in the dataset, it is noteworthy that **`r flightCountsDelay$percentArrivedLate[flightCountsDelay$airlineName == "Total"]`%** of the total **`r flightCountsDelay$numFlights[flightCountsDelay$airlineName == "Total"]` flights** arrived late. This indicates that nearly one-fifth of all flights experienced delays in their arrival.
+
+When examining individual airlines, the rank order based on the **percentage of flights arriving late**, from best to worst, is as follows: **Delta < United < American < Southwest < Others**.
+
+Thus, Delta had the best frequency of on-time arrival performance, with the big-4 airlines (Delta, United, American, and Southwest) outperforming the combined category of the six smaller airlines.
+
+
+### Magnitude of Arrival Delay (minutes)
+
+The **median** arrival delay in 2023 was **`r flightCountsDelay$Median[flightCountsDelay$airlineName == "Total"]` minutes**, indicating that half of the delayed flights were delayed by more than this duration. The **mean** delay for these flights was **`r flightCountsDelay$Mean[flightCountsDelay$airlineName == "Total"]` minutes**, with a standard deviation of **`r flightCountsDelay$SD[flightCountsDelay$airlineName == "Total"]` minutes**, reflecting the variability in delay times. These statistics underline the considerable range in the duration of these delays.
+
+Based on the **median minutes of arrival delay** for late flights, the airlines can be ranked from best to worst as follows: **Southwest < Delta < Others < American < United**. 
+
+Specifically, Southwest Airlines had the lowest median arrival delay at `r flightCountsDelay$Median[flightCountsDelay$airlineName == "Southwest Airlines"]` minutes, while United Airlines had the highest median arrival delay at `r flightCountsDelay$Median[flightCountsDelay$airlineName == "United Airlines"]` minutes. 
+
+These rankings indicate that the frequency and magnitude of arrival delays vary across airlines, highlighting the differences in their operational performance and punctuality. Overall, we note that departure delays frequently often translated into arrival delays.
+
+### Impact of Departure Delay on Arrival Delay across Airlines
+
+Analyzing the correlation between departure delays and arrival delays is crucial for understanding the operational performance of airlines. *Table 1c* summarizes the number and percentage of flights based on whether they departed late or on time, and whether they arrived late or on time
+
+*<Insert Table 1c>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Table 1c: Summary of Flights by Departure and Arrival Delays
+# TableFlightSummary
+```
+
+This data indicates that **`r flightSummary$percentFlights[flightSummary$departure == "Late" & flightSummary$arrival == "Late"]`%** of all flights departed late and also arrived late. 
+Interestingly, **`r flightSummary$percentFlights[flightSummary$departure == "Late" & flightSummary$arrival == "On Time"]`%** of the flights were able to make up for the lost time during their journey, arriving on time despite departing late. 
+This highlights the importance of addressing departure delays to ensure timely arrivals.
+
+Further, *Table 1d* summarizes the overall counts and percentages of delayed departures and arrivals for each airline.
+
+*<Insert Table 1d>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Table 1d: Departure Delay, Arrival Delay by Airline
+#TableAirlineOverallSummary
+```
+
+From *Table 1d*, we notice that **Delta Air Lines** was the best performing. **Southwest Airlines** and **"Other" Airlines** were the relatively worst performing in terms of departure delay and subsequent arrival delay. 
+
+For **Delta Air Lines**, **`r airlineOverallSummary$percentDelayedDepartures[airlineOverallSummary$Airline == "Delta Air Lines"]`%** of its flights experienced delayed departures, and **`r airlineOverallSummary$percentDelayedArrivals[airlineOverallSummary$Airline == "Delta Air Lines"]`%** of its flights arrived late, showing a consistent level of departure delays and subsequent arrival delays.
+
+**Southwest Airlines** had the highest percentage of delayed departures at **`r airlineOverallSummary$percentDelayedDepartures[airlineOverallSummary$Airline == "Southwest Airlines"]`%** and **`r airlineOverallSummary$percentDelayedArrivals[airlineOverallSummary$Airline == "Southwest Airlines"]`%** of its flights arrived late.
+
+
+
+Finally, *Table 1e* provides the interaction between departure and arrival delay for each airline. The data reveals important insights into the operational performance and punctuality of the airlines. 
+
+*<Insert Table 1e>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Table 1e: Departure * Arrival Delay Interaction by Airline
+#TableAirlineSummary
+```
+
+* Delta Air Lines stands out for its relatively low percentages of both departure and arrival delays, indicating a robust operational efficiency. Delta's ability to manage its schedule effectively, despite initial delays, suggests strong recovery strategies and efficient time management. This performance is reflected in the lower proportion of flights that depart late and subsequently arrive late, highlighting Delta's proficiency in minimizing the cascading effects of delays.
+
+* In contrast, Southwest Airlines exhibits a higher percentage of delayed departures and arrivals. This pattern suggests that when Southwest flights are delayed at departure, they are less likely to recover time during the flight, leading to a higher likelihood of late arrivals. This could imply challenges in operational flexibility or recovery strategies during flights.
+
+We notice the importance of efficient departure processes in ensuring on-time arrivals. Airlines like Delta, with better departure punctuality, also tend to have better arrival performance, demonstrating the critical role of managing initial delays. For airlines aiming to improve their punctuality, focusing on minimizing departure delays and enhancing in-flight recovery strategies could be key areas of improvement. 
+
+
+
+
+## Flight Delay across Airports
+
+The dataset covers **`r nrow(uniqueIATACodes)`** U.S. airports, identified by their unique IATA codes. These airports serve as origin or destination points for the recorded flights, providing a robust framework for analyzing flight operations. A complete list of these IATA codes is available in Appendix A.
+
+
+### Flight Delay at the Busiest Airports
+
+The top-20 busiest airports handle over 50% of U.S. flights, making them critical hubs in the aviation network. The remaining airports have sparser flight schedules. *Table 2a* details delay statistics for the busiest airports, highlighting their operational challenges.
+
+*<Insert Table 2a>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2a:  Frequency and Magnitude of Arrival Delay at the Top-20 Busiest Airports ########
+#TableTop20AirportsWithDelays
+```
+
+Orlando (MCO), Harry Reid (LAS), and Logan (BOS) had the highest percentages of late-arriving flights, indicating significant bottlenecks. In contrast, Minneapolis–Saint Paul (MSP), Salt Lake City (SLC), and Seattle–Tacoma (SEA) had the lowest, reflecting more effective management.
+
+Regarding median arrival delays, George Bush Intercontinental (IAH), John F. Kennedy (JFK), and LaGuardia (LGA) faced the highest delays, suggesting persistent scheduling issues. Conversely, Seattle–Tacoma (SEA), Harry Reid (LAS), and Phoenix Sky Harbor (PHX) showed the lowest median delays, indicating better mitigation strategies.
+
+The summary in Table 2a reveals that the top-20 busiest airports had **`r format(sum(top20Airports$totalFlights[top20Airports$dest == "Top-20 Busy Airports"]), big.mark = ",")`** flights with **`r top20Airports$percentArrivedLate[top20Airports$dest == "Top-20 Busy Airports"]`**% arriving late. Non-busy airports had a slightly higher late arrival rate at **`r top20Airports$percentArrivedLate[top20Airports$dest == "Non-Busy Airports"]`**% but shorter delays. Overall, **`r top20Airports$percentArrivedLate[top20Airports$dest == "Total"]`**% of flights arrived late across all airports, with median and mean delays of **`r top20Airports$Median[top20Airports$dest == "Total"]`** and **`r top20Airports$Mean[top20Airports$dest == "Total"]`** minutes, respectively. This underscores the heavier delay burden on the busiest airports and the need for enhanced operational strategies to manage high traffic volumes effectively.
+
+
+
+
+
+
+
+
+
+### Airline Routes
+
+#### Types of Airline Routes: Busy-Busy, Busy-NotBusy, NotBusy-Busy, NotBusy-NotBusy
+
+The dataset categorizes routes between 356 U.S. airports into four types: Busy-Busy, Busy-NotBusy, NotBusy-Busy, and NotBusy-NotBusy. This classification provides insights into the operational patterns and connectivity within the U.S. aviation network.
+
+*<Insert Table 2b>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2b: Flights by Route {Busy-Busy, Busy-NotBusy, NotBusy-Busy, NotBusy-NotBusy} ########
+#TableRouteSummary
+```
+
+**Inter-Hub Connectivity: Busy-Busy Routes** — Busy-Busy routes include `r routeSummary$CountFlights[routeSummary$Route == "Busy-Busy"]` flights, representing `r routeSummary$PercentageFlights[routeSummary$Route == "Busy-Busy"]`% of the total. This high volume underscores the importance of inter-hub connectivity, facilitating substantial passenger transfers and operational efficiency. The significant concentration of flights between the top-20 busiest airports highlights their pivotal role as central nodes in the network.
+
+**Outbound Traffic: Busy-NotBusy Routes** — Busy-NotBusy routes account for `r routeSummary$CountFlights[routeSummary$Route == "Busy-NotBusy"]` flights, or `r routeSummary$PercentageFlights[routeSummary$Route == "Busy-NotBusy"]`% of the total. This substantial outbound traffic flow from major hubs to smaller destinations emphasizes the reliance on major airports to connect with less busy ones, reflecting their role in distributing traffic across a wider network.
+
+**Feeder and Hub Routes: NotBusy-Busy Routes** — NotBusy-Busy routes include `r routeSummary$CountFlights[routeSummary$Route == "NotBusy-Busy"]` flights, making up `r routeSummary$PercentageFlights[routeSummary$Route == "NotBusy-Busy"]`% of the total. These routes highlight the role of smaller airports as feeders into major hubs, serving as significant points of departure that channel traffic into larger, more connected airports. The high percentage of flights starting at less busy airports and ending at major hubs emphasizes the dependency of these airports on the major hubs for connectivity.
+
+**Limited Connectivity: NotBusy-NotBusy Routes** — NotBusy-NotBusy routes comprise `r routeSummary$CountFlights[routeSummary$Route == "NotBusy-NotBusy"]` flights, or `r routeSummary$PercentageFlights[routeSummary$Route == "NotBusy-NotBusy"]`% of the total. This category illustrates the limited connectivity between smaller airports. The lower percentage of flights in this category reflects the challenges smaller airports face in maintaining substantial air traffic volumes without the support of major hubs.
+
+Overall, the total number of flights across all routes is `r routeSummary$CountFlights[routeSummary$Route == "Total"]`. The distribution in Table 2b reveals key dependencies and operational patterns:
+
+- **Major Hubs as Central Nodes**: Busy-Busy routes emphasize the central role of major hubs in facilitating inter-hub connectivity and passenger transfers.
+- **Dynamic Traffic Flows**: Busy-NotBusy and NotBusy-Busy routes illustrate dynamic traffic flows between major hubs and smaller destinations, underscoring the critical role of major hubs in the broader network.
+- **Challenges for Smaller Airports**: NotBusy-NotBusy routes reflect the challenges smaller airports face in maintaining connectivity and operational efficiency without major hubs.
+
+This analysis highlights the critical role of major hubs in sustaining the majority of air traffic and the need to improve connectivity and operational efficiency across different airport categories to ensure a robust and resilient aviation network.
+
+*Table 2c* summarizes the frequency and magnitude of arrival delays based on different route categories, highlighting the operational performance and delay patterns for flights traveling between busy airports and those traveling to or from less busy airports.
+
+*<Insert Table 2c>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2c: Frequency and Magnitude (in Minutes) of Arrival Delay for each Route ########
+#TableRouteDelaySummary
+```
+
+*Table 2c* provides a comprehensive analysis of arrival delays across different route categories, offering critical insights into the operational performance and punctuality of flights within the United States. It highlights the frequency and magnitude of arrival delays, giving a perspective on the challenges airlines face depending on their route configurations.
+
+**Inter-Hub Connectivity: Busy-Busy Routes** — Busy-Busy routes, comprising `r routeDelaySummary$numFlights[routeDelaySummary$Route == "Busy-Busy"]` flights, demonstrate a high percentage of delayed arrivals at `r routeDelaySummary$percentArrivedLate[routeDelaySummary$Route == "Busy-Busy"]`%. The median arrival delay is `r routeDelaySummary$Median[routeDelaySummary$Route == "Busy-Busy"]` minutes, with an average delay of `r routeDelaySummary$Mean[routeDelaySummary$Route == "Busy-Busy"]` minutes. The high standard deviation of `r routeDelaySummary$SD[routeDelaySummary$Route == "Busy-Busy"]` minutes suggests substantial variability in delay times, indicating potential inefficiencies or bottlenecks in managing high traffic volumes between major hubs.
+
+**Outbound Traffic: Busy-NotBusy Routes** — Busy-NotBusy routes, with `r routeDelaySummary$numFlights[routeDelaySummary$Route == "Busy-NotBusy"]` flights, show an arrival delay percentage of `r routeDelaySummary$percentArrivedLate[routeDelaySummary$Route == "Busy-NotBusy"]`%. The median delay is slightly lower at `r routeDelaySummary$Median[routeDelaySummary$Route == "Busy-NotBusy"]` minutes, with an average delay of `r routeDelaySummary$Mean[routeDelaySummary$Route == "Busy-NotBusy"]` minutes. The lower standard deviation of `r routeDelaySummary$SD[routeDelaySummary$Route == "Busy-NotBusy"]` minutes compared to the Busy-Busy routes suggests more consistency in delay times, potentially due to fewer operational complexities when serving smaller airports.
+
+**Feeder and Hub Routes: NotBusy-Busy Routes** — NotBusy-Busy routes, involving `r routeDelaySummary$numFlights[routeDelaySummary$Route == "NotBusy-Busy"]` flights, have a lower percentage of delayed arrivals at `r routeDelaySummary$percentArrivedLate[routeDelaySummary$Route == "NotBusy-Busy"]`%. The median delay is `r routeDelaySummary$Median[routeDelaySummary$Route == "NotBusy-Busy"]` minutes, with an average delay of `r routeDelaySummary$Mean[routeDelaySummary$Route == "NotBusy-Busy"]` minutes. The high standard deviation of `r routeDelaySummary$SD[routeDelaySummary$Route == "NotBusy-Busy"]` minutes reflects greater variability and unpredictability in delays when flights arrive at major hubs from smaller airports.
+
+**Limited Connectivity: NotBusy-NotBusy Routes** — NotBusy-NotBusy routes, consisting of `r routeDelaySummary$numFlights[routeDelaySummary$Route == "NotBusy-NotBusy"]` flights, show an arrival delay percentage of `r routeDelaySummary$percentArrivedLate[routeDelaySummary$Route == "NotBusy-NotBusy"]`%. The median delay is the lowest at `r routeDelaySummary$Median[routeDelaySummary$Route == "NotBusy-NotBusy"]` minutes, with an average delay of `r routeDelaySummary$Mean[routeDelaySummary$Route == "NotBusy-NotBusy"]` minutes. The low standard deviation of `r routeDelaySummary$SD[routeDelaySummary$Route == "NotBusy-NotBusy"]` minutes indicates more predictable and manageable delay patterns for flights operating exclusively between smaller airports.
+
+**Comparative Insights**: 
+Across all routes, the total number of flights experiencing delays is `r routeDelaySummary$numFlights[routeDelaySummary$Route == "Total"]`, with an overall delay percentage of `r routeDelaySummary$percentArrivedLate[routeDelaySummary$Route == "Total"]`%. The median delay across all routes is `r routeDelaySummary$Median[routeDelaySummary$Route == "Total"]` minutes, with an average delay of `r routeDelaySummary$Mean[routeDelaySummary$Route == "Total"]` minutes and a standard deviation of `r routeDelaySummary$SD[routeDelaySummary$Route == "Total"]` minutes. 
+
+This analysis reveals that while Busy-Busy routes experience the highest variability in delays, indicating potential operational challenges, NotBusy-NotBusy routes are more predictable. Busy-NotBusy and NotBusy-Busy routes fall in between, highlighting the complex dynamics of air traffic management across different airport categories.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Impact of Departure Delay on Arrival Delay across Routes
+
+*Table 2d* provides an overview of how departure delays impact arrival delays across different route categories, highlighting key operational patterns in the aviation network.
+
+*<Insert Table 2d>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2d: Departure Delay, Arrival Delay for each Route ########
+#TableRouteOverallSummary
+```
+
+**Inter-Hub Connectivity: Busy-Busy Routes** — Busy-Busy routes show high delay rates: 22.01% for departures and 22.08% for arrivals. The minimal difference suggests limited recovery during flight due to high traffic volumes at major hubs. Efficient time management and robust operational strategies are crucial in these routes.
+
+**Outbound Traffic: Busy-NotBusy Routes** — Busy-NotBusy routes have slightly lower delay rates: 20.90% for departures and 21.09% for arrivals. Delays from major hubs often propagate to smaller destinations, emphasizing the need for efficient departure management.
+
+**Feeder and Hub Routes: NotBusy-Busy Routes** — NotBusy-Busy routes show the lowest delay rates: 17.81% for departures and 18.58% for arrivals. The larger gap between departure and arrival delay percentages indicates better delay mitigation en route due to less congestion at the origin.
+
+**Limited Connectivity: NotBusy-NotBusy Routes** — NotBusy-NotBusy routes have departure delays at 21.40% and arrival delays at 20.35%. High departure delays reflect operational challenges at smaller airports, though some recovery is possible during flight.
+
+**Comparative Insights** — Across all routes, the following key insights emerge:
+
+- **Efficiency at Major Hubs**: The Busy-Busy routes exhibit the highest delay percentages, highlighting the challenges of managing high traffic volumes and the need for optimized operations at major hubs.
+- **Propagation of Delays**: The Busy-NotBusy routes show that delays originating from major hubs often affect arrivals at smaller airports, emphasizing the importance of efficient departure processes.
+- **Recovery Potential**: The NotBusy-Busy routes suggest better recovery potential for delays during flight, possibly due to less congested conditions at the origin airports.
+- **Operational Constraints at Smaller Airports**: The NotBusy-NotBusy routes reflect the operational constraints and higher delay percentages at smaller airports, highlighting the need for targeted improvements in efficiency and coordination.
+
+
+
+
+
+
+*Table 2e* provides a detailed analysis of the interaction between departure and arrival delays across different flight routes, offering deeper insights into operational efficiency.
+
+*<Insert Table 2e>*
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2e: Departure * Arrival Delay Interaction for each Route ########
+#TableRouteSummaryByCategory
+```
+
+The analysis reveals several critical insights across different route categories:
+
+- **Busy-Busy Routes**: These routes frequently experience delays at both departure and arrival points, underscoring the challenges of managing high traffic volumes at major hubs. The limited ability to recover from delays highlights the need for robust time management strategies to enhance operational efficiency at these key nodes.
+
+- **Busy-NotBusy Routes**: Delays often persist from departure to arrival, showing how delays from major hubs propagate to smaller destinations. While some flights manage to recover lost time during the flight, the overall impact of delays from major hubs is significant, emphasizing the importance of efficient departure processes.
+
+- **NotBusy-Busy Routes**: These routes demonstrate a slightly better recovery rate from departure delays, indicating more effective delay management en route. This suggests better recovery potential for delays during flight, possibly due to less congested conditions at the origin airports.
+
+- **NotBusy-NotBusy Routes**: While many flights face delays at both departure and arrival points, a significant number manage to recover from departure delays. This reflects the operational constraints and higher delay percentages at smaller airports, highlighting the need for targeted improvements in efficiency and coordination to mitigate delays during flight.
+
+Overall, this analysis underscores the aviation network's critical dependency on efficient departure and arrival management, particularly at major hubs, to sustain operational performance and minimize delays across all route categories.
+
+
+
+
+
+
+## Causes of Flight Delay
+
+Airline delays can be caused by several factors: 
+
+"Carrier Delay" refers to delays caused by the airline itself, such as issues with aircraft maintenance or crew scheduling. 
+"Weather Delay" encompasses delays due to adverse weather conditions that can disrupt flight schedules. 
+"National Air System (NAS) Delay" includes delays within the National Air System, such as air traffic control delays, heavy traffic volume, and other non-weather-related factors. 
+"Security Delay" accounts for delays resulting from security measures or breaches that affect flight operations. 
+"Late Aircraft Delay" captures delays caused by the late arrival of the aircraft from a previous flight. These categories collectively provide a comprehensive understanding of the various factors contributing to flight delays.
+
+*Table 3a* gives us the frequency with which different causes of delay occur.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Flight Delay Causes ########
+#Table3a
+```
+
+*<Insert Table 3a>*
+
+*Table 3b* gives us the magnitude of flight delay in minutes for different causes.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Magnitude of Flight Delay (minutes) for different Causes ########
+#TableDelaySummary
+```
+
+*<Insert Table 3b>*
+
+The data reveals the following insights:
+
+- **Carrier Delay**: The most frequent cause of delays, reflecting significant operational inefficiencies within airlines, such as maintenance issues and crew problems. It also contributes heavily to total delay time, indicating inconsistent performance and high variability in managing these issues.
+
+- **Late Aircraft Delay**: The second most frequent cause, highlighting how delays in previous flights create a major bottleneck. It has the highest total delay time and substantial mean delay, showing the cascading impact of such delays across multiple flights.
+
+- **NAS Delay**: Significant in both frequency and total delay time, pointing to systemic issues within air traffic control and management. This reflects challenges in handling air traffic volume and control procedures, with moderate mean delay and variability.
+
+- **Weather Delay**: Less frequent but still impactful, with weather-related delays being unpredictable. Though less frequent, weather delays can cause substantial disruption, although they are generally managed efficiently with lower mean delay and variability compared to other delay types.
+
+- **Security Delay**: The least frequent and impactful, indicating effective security management practices. Despite its low frequency, the minimal impact on total delay time highlights the efficiency of current security measures.
+
+Overall, addressing operational inefficiencies within airlines and improving system-wide air traffic management are crucial for mitigating delays. Enhancing turnaround processes for late aircraft and refining strategies for handling NAS-related delays are essential for better punctuality and reducing the overall impact of flight delays.
+
+
+
+
+
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+############# END WRITING ###########
+# Hint: Do Not Mixup WRITING with ANALYSIS. Do not try to do both together. 
+```
+
+\newpage
+# Tables
+
+### Table 1a: Number of Flights by Airline
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 1a: TableFlightsByAirlines ########
+TableFlightsByAirlines
+```
+
+### Table 1b: Frequency and Magnitude of Arrival Delay by Airline
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 1b: Frequency and Magnitude of Arrival Delay by Airline ########
+TableAirlinesDelay
+```
+
+### Table 1c: Summary of Flights by Departure and Arrival Delays
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+### Table 1c: 
+TableFlightSummary
+```
+
+### Table 1d: Departure Delay, Arrival Delay by Airline 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Table 1d: Departure Delay, Arrival Delay by Airline
+TableAirlineOverallSummary
+```
+
+### Table 1e: Departure * Arrival Delay Interaction by Airline
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Table 1e: Departure * Arrival Delay Interaction by Airline
+TableAirlineSummary
+```
+
+\newpage
+
+### Table 2a: Frequency and Magnitude of Arrival Delay at the Top-20 Busiest Airports
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2a: Frequency and Magnitude of Arrival Delay at the Top-20 Busiest Airports ########
+TableTop20AirportsWithDelays
+```
+
+### Table 2b: Flights by Route {Busy-Busy, Busy-NotBusy, NotBusy-Busy, NotBusy-NotBusy}
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2b: Flights by Route {Busy-Busy, Busy-NotBusy, NotBusy-Busy, NotBusy-NotBusy} ########
+TableRouteSummary
+```
+
+### Table 2c: Frequency and Magnitude (in Minutes) of Arrival Delay for each Route
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2c: Frequency and Magnitude (in Minutes) of Arrival Delay for each Route ########
+TableRouteDelaySummary
+```
+
+### Table 2d: Departure Delay, Arrival Delay for each Route
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2d: Departure Delay, Arrival Delay for each Route ########
+TableRouteOverallSummary
+```
+
+### Table 2e: Departure * Arrival Delay Interaction for each Route
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 2e: Departure * Arrival Delay Interaction for each Route ########
+TableRouteSummaryByCategory
+```
+
+\newpage
+
+### Table 3a: Frequency of Causes of Flight Delay
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 3a: Frequency of Causes of Flight Delay ########
+Table3a
+```
+
+
+### Table 3b: Magnitude of Flight Delay (minutes) for different Causes
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 3b: Magnitude of Flight Delay (minutes) for different Causes ########
+TableDelaySummary
+```
+
+
+
+
+\newpage
+
+### Table 4a: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM)
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+##### Table 4a: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) ####
+tableArrivalTimeDelay # Table 4a
+```
+
+### Table 4b: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Airline 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 4b: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Airline  ########
+tableArrivalTimeAirlineDelay # Table 4b
+```
+
+### Table 4c: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Route 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 4c: Frequency and Magnitude of Arrival Delay by Arrival Time (AM/PM) and Route  ########
+tableArrivalTimeRouteDelay # Table 4c
+```
+
+
+
+
+\newpage
+
+### Table 5a: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday)
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 5a: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday)  ########
+tableWeekendDelay # Table 5a
+```
+
+### Table 5b: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Airline
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 5b: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Airline ########
+tableWeekendAirlineDelay # Table 5b
+```
+
+##### Table 5b: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Airline ####
+
+
+
+### Table 5c: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Route 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 5c: Frequency and Magnitude of Arrival Delay by Arrival Day (Weekend/Weekday) and Route ########
+tableWeekendRouteDelay # Table 5c
+```
+
+
+\newpage
+
+### Table 6a: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun)
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 6a: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun)  ########
+tableDayOfWeekDelay
+```
+
+### Table 6b: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Airline
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 6b: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Airline ########
+tableDayOfWeekAirlineDelay # Table 6b
+```
+
+
+### Table 6c: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Route
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 6c: Frequency and Magnitude of Arrival Delay by Day Of The Week (Mon/Tue/../Sun) and Route  ########
+tableDayOfWeekRouteDelay # Table 6c
+```
+
+
+
+
+### Table 7a: National Holidays in the United States
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table 7a: National Holidays in the United States  ########
+TableUSHolidays # Table 7a
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+# Appendices
+
+## Appendix A -- Data Dictionary and Unused Data Columns
+
+
+### Appendix A1: Unique IATA Codes of Airports
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Display Appendix A1: Unique IATA Codes of Airports 
+TableUniqueIATACodes
+```
+
+### Appendix A2: Airport Details data columns
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#### Airport Details ####
+airportDetails <- data.frame(
+  `Column Name` = c("originCityMarketId", 
+                    "origin", 
+                    "originCityName", 
+                    "originStateAbr", 
+                    "originStateNm", 
+                    "destAirportId", 
+                    "destCityMarketId", 
+                    "dest", 
+                    "destCityName", 
+                    "destStateAbr", 
+                    "destStateNm"),
+  Description = c("Origin City Market ID", 
+                  "Origin Airport", 
+                  "Origin City Name", 
+                  "Origin State Abbreviation", 
+                  "Origin State Name", 
+                  "Destination Airport ID", 
+                  "Destination City Market ID", 
+                  "Destination Airport", 
+                  "Destination City Name", 
+                  "Destination State Abbreviation", 
+                  "Destination State Name")
+)
+
+# Use kable to format the updated table
+TableAirports <-
+  kable(airportDetails, 
+        format = "pandoc", 
+        caption = "Table A2: Airport Details")
+#### Airport Details ####
+```
+
+*Table A2* provides details about the origin and destination airports involved in the flight data. 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Origin and Destination Airports ########
+TableAirports
+```
+
+The *originCityMarketId* and *destCityMarketId* columns represent the unique market identifiers for the origin and destination cities, respectively. The *origin* and *dest* columns specify the airport codes for the origin and destination airports. The *originCityName* and *destCityName* columns provide the full names of these cities. Additionally, the *originStateAbr* and *destStateAbr* columns indicate the state abbreviations, while *originStateNm* and *destStateNm* give the full state names. These columns collectively provide comprehensive information about the origin and destination airports for each flight.
+
+
+
+### Appendix A3: Time Period
+
+*Table A3* provides details about various time-related aspects of the flight data. 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## TIME PERIOD ########
+TableTimeperiod
+```
+
+The *year* column indicates the calendar year of the flight, while the *quarter* divides the year into four parts (1-4). The *month* column specifies the month in which the flight occurred, ranging from January to December. The *dayOfMonth* indicates the specific day of the month (1-31), and the *dayOfWeek* categorizes the flight by the day of the week (Monday to Sunday). The *weekend* column classifies the flight as either occurring on a weekday or a weekend. Lastly, the *flDate* provides the precise flight date in the format yyyy-mm-dd, encapsulating all essential time period information.
+
+
+
+
+### Appendix A4: Flight Performance Metrics
+
+*Table A4* provides details about different Flight Performance Metrics.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Flight Performance Metrics ########
+TableFlightPerformance
+```
+
+The *mktUniqueCarrier* or Marketing Carrier Unique Code, represents the marketing carrier, which is the airline responsible for selling the flight.
+
+The *crsDepTime* represents the scheduled departure time, indicating when the flight is supposed to leave the gate according to the airline’s timetable. However, the *depTime* is the actual departure time, which marks when the flight actually departs from the gate. The *depTimeAMPM* categorizes this actual departure time into either AM or PM, helping to identify whether the departure occurred in the morning or afternoon/evening.
+
+The *depDelay* is a crucial metric that calculates the departure delay in minutes by subtracting the scheduled departure time (*crsDepTime*) from the actual departure time (*depTime*). If the result is positive, it indicates a delay, whereas a negative value shows the flight departed earlier than scheduled. To focus solely on delays, the *depDelayNew* column adjusts this value by setting any early departure delays to zero. This column thus represents the departure delay in minutes, ignoring early departures.
+
+For a more specific delay threshold, the *depDel15* column is used. It is a binary indicator showing whether the departure delay was greater than 15 minutes, with a value of 1 indicating a delay over 15 minutes and 0 otherwise. This helps in identifying significant delays.
+
+Once the aircraft pushes back from the gate, it undergoes the taxi-out phase, which is captured by the *taxiOut* time. This is the duration in minutes from the time the aircraft leaves the gate until it takes off (wheels-off). The exact time the aircraft takes off is recorded as *wheelsOff*. Conversely, the time the aircraft lands is noted as *wheelsOn*, and the subsequent taxi-in phase, from landing to reaching the gate, is recorded as *taxiIn* time.
+
+On the arrival side, the *crsArrTime* indicates the scheduled arrival time, while the *arrTime* shows the actual arrival time. The *arrTimeAMPM* column categorizes the actual arrival time into AM or PM. The difference between the actual and scheduled arrival times is captured by the *arrDelay*, reflecting the arrival delay in minutes. Similar to the departure delay, *arrDelayNew* sets early arrivals to zero, providing a focused view of arrival delays. Additionally, *arrDel15* serves as a binary indicator of whether the arrival delay exceeded 15 minutes.
+
+Furthermore, the *crsElapsedTime* represents the scheduled elapsed time of the flight, calculated as the difference between the scheduled arrival time (*crsArrTime*) and the scheduled departure time (*crsDepTime*). In contrast, the *actualElapsedTime* captures the actual elapsed time of the flight from departure to arrival. The *airTime* isolates the actual time spent flying by subtracting the taxi-out and taxi-in times from the actual elapsed time.
+
+The *actualElapsedTime* is the total time taken for the flight from the moment it departs the gate until it arrives at the destination gate. This includes all phases of the flight: the time spent in the air, as well as the time spent taxiing on the ground at both the departure and arrival airports. Specifically, *actualElapsedTime* can be broken down into three components: *airTime*, *taxiIn*, and *taxiOut*.
+
+The *airTime* represents the duration of the flight while it is airborne, from takeoff (wheels-off) to landing (wheels-on). The *taxiOut* time covers the period from the gate departure to the actual takeoff, and the *taxiIn* time spans from the landing to when the aircraft reaches the arrival gate. Together, these components sum up to the *actualElapsedTime*, providing a comprehensive measure of the total journey time in minutes:
+*actualElapsedTime = airTime + taxiIn + taxiOut*
+
+Finally, the *distance* column denotes the distance between the origin and destination airports in miles, providing a measure of the flight’s journey length.
+
+
+
+
+
+
+
+### Appendix A5: Causes of Airline Delay
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Appendix A5: Causes of Airline Delay ########
+TableFlightDelayCauses
+```
+
+*Table A5* provides insights into various reasons for flight delays.
+
+The *carrierDelay* column accounts for delays caused by the airline, such as maintenance issues or crew problems. The *weatherDelay* captures delays due to adverse weather conditions that impact flight schedules. 
+The *nasDelay* reflects delays within the National Air System, including heavy traffic volume, air traffic control, and other non-weather-related factors. 
+The *securityDelay* records delays caused by security measures or breaches. 
+Lastly, the *lateAircraftDelay* measures delays caused by the late arrival of the aircraft from a previous flight. These columns collectively provide a detailed breakdown of the different factors contributing to flight delays.
+
+
+
+
+
+### Appendix A6: Remaining Unused Data Columns
+
+```{r  echo=FALSE, warning=FALSE, message=FALSE}
+
+# Remaining Unused Data Columns
+remainingUnusedDataColumns <- data.frame(
+  `Column Name` = c("depDelayGroup", 
+                    "depTimeBlk", 
+                    "arrDelayGroup", 
+                    "arrTimeBlk", 
+                    "flights", 
+                    "distanceGroup",
+                    "opUniqueCarrier",
+                    "tailNum",
+                    "mktCarrierFlNum"),
+  Description = c("Grouping of Departure Delay Intervals", 
+                  "Scheduled Departure Time Block", 
+                  "Grouping of Arrival Delay Intervals", 
+                  "Scheduled Arrival Time Block", 
+                  "Number of Flights (usually 1)", 
+                  "Distance Group (distance intervals)",
+                  "Operating Carrier Unique Code",
+                  "Tail Number of the Aircraft",
+                  "Marketing Carrier Flight Number")
+)
+
+# Use kable to format the updated table
+kable(remainingUnusedDataColumns, 
+      format = "pandoc", 
+      caption = "Table A5: Remaining Unused Data Columns")
+
+```
+
+
+The *mktUniqueCarrier* or Marketing Carrier Unique Code, represents the marketing carrier, which is the airline responsible for selling the flight. This code may differ from the operating carrier, which is the Airline that actually operates the flight. The marketing carrier manages the scheduling and ticket sales for the flight. For instance, if you book a flight through United Airlines (UA), UA is the marketing carrier, even if the flight is operated by another airline.
+
+The *opUniqueCarrier* or Operating Carrier Unique Code, represents the operating carrier, which is the airline that physically operates the flight. This can be different from the marketing carrier, especially in cases of code-share agreements, where one airline markets the flight, but another airline operates it. For example, you might book a flight through United Airlines (UA), but the flight is operated by SkyWest Airlines (OO).
+
+The *tailNum* or Tail Number of the Aircraft, is the unique identifier of the aircraft, often referred to as the registration number. This number is typically painted on the tail of the aircraft and is used to track the aircraft’s maintenance and operational history. For example, a tail number might look like "N12345" for an aircraft registered in the United States.
+
+The *mktCarrierFlNum* or Marketing Carrier Flight Number, represents the flight number assigned by the marketing carrier. This number is used to identify a specific flight in the airline’s schedule and is typically a combination of the carrier code and a numeric flight number. For instance, a flight marketed by United Airlines with flight number 123 would be referred to as UA123.
+
+
+
+\newpage
+## Appendix B -- Airline and Airport Market Share
+
+*Table B1* provides a breakdown of market share for the 4 largest airlines, combining the remaining six smaller airlines under the category "Other."
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## TableAirlinesNew ########
+TableAirlinesNew
+```
+
+*Table B1* highlights that American Airlines flew `r airlineTableNew$Flights[1]` flights, holding the highest market share. This distribution underscores the dominance of the top four airlines, which collectively handled the majority of air traffic.
+
+
+
+
+*Table B2* provides a list of the 20 busiest airports in the US, based on number of Arriving Flights in our data.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Table B2: 20 Busiest Airports in the US, based on number of Arriving Flights ########
+TableTop20Airports
+```
+
+
+
+
+
+\newpage
+## Appendix C -- Busiest airports in the US, based on Passenger Traffic.
+
+**Appendix C** provides a list of the 16 busiest airports in the US, based on Passenger Traffic. 
+Source:  "2023 Airport Traffic Report" (PDF). Port Authority of New York and New Jersey. April 2024. p. 32.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+######## Appendix C: 16 Busiest Airports in the US based on Passenger Traffic ########
+TableBusiestAirports
+```
+
+
+
+
+
+
+
+
+
+
